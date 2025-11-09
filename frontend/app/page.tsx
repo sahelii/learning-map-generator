@@ -11,6 +11,8 @@ export default function Home() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [lastTopic, setLastTopic] = useState<string | null>(null);
 
   const handleGenerateMap = async (topic: string) => {
     setIsLoading(true);
@@ -33,6 +35,7 @@ export default function Home() {
       }
 
       const data: LearningMapData = await response.json();
+      setLastTopic(topic);
       const sanitizedData: LearningMapData = {
         ...data,
         nodes: (data.nodes ?? []).map((node) => ({
@@ -65,6 +68,38 @@ export default function Home() {
 
   const handleDismissError = () => {
     setError(null);
+  };
+
+  const handleExport = () => {
+    if (!learningMap) {
+      return;
+    }
+
+    try {
+      const fileName = `${(lastTopic || learningMap.mainTopic || 'learning-map')
+        .toLowerCase()
+        .replace(/\s+/g, '-')
+        .replace(/[^a-z0-9-_]/g, '')}-learning-map.json`;
+
+      const blob = new Blob([JSON.stringify(learningMap, null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setToast('Map exported successfully');
+      setTimeout(() => setToast(null), 2500);
+    } catch (exportError) {
+      setToast('Failed to export map');
+      setTimeout(() => setToast(null), 2500);
+      console.error('Error exporting learning map:', exportError);
+    }
   };
 
   const hasLearningMap = Boolean(learningMap);
@@ -208,6 +243,20 @@ export default function Home() {
                 </div>
               )}
             </div>
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-white/80 p-4 shadow-inner">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Want to share or revisit later?
+              </p>
+              <button
+                onClick={handleExport}
+                className="group inline-flex items-center gap-2 rounded-2xl border border-transparent bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 px-5 py-2.5 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-blue-200"
+              >
+                Download Learning Map (JSON)
+                <span className="text-lg transition-transform group-hover:translate-x-1">
+                  ⬇
+                </span>
+              </button>
+            </div>
           </section>
         )}
 
@@ -215,6 +264,13 @@ export default function Home() {
           <NodeDetails node={selectedNode} onClose={handleCloseDetails} />
         )}
       </div>
+      {toast && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+          <div className="pointer-events-auto rounded-full bg-slate-900/90 px-5 py-2 text-sm font-medium text-white shadow-xl">
+            {toast}
+          </div>
+        </div>
+      )}
     </main>
   );
 }
