@@ -1,6 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import type { MouseEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import ReactFlow, {
   Background,
   BackgroundVariant,
@@ -27,8 +33,10 @@ type CustomNodeData = Node & {
   color: string;
   isExpanding?: boolean;
   isExpanded?: boolean;
+  justExpanded?: boolean;
   isNew?: boolean;
-  onClick?: (node: Node) => void;
+  onViewDetails?: (node: Node) => void;
+  onExpand?: (node: Node) => void;
 };
 
 const SUBTOPIC_PALETTE = [
@@ -44,30 +52,51 @@ const SUBTOPIC_PALETTE = [
 ];
 
 const CustomNode = ({ data }: { data: CustomNodeData }) => {
-  const handleClick = () => {
-    if (data.onClick) {
-      const { onClick, isExpanded, isExpanding, isNew, color, ...payload } =
-        data;
-      onClick(payload as Node);
-    }
+  const nodePayload: Node = {
+    id: data.id,
+    label: data.label,
+    description: data.description,
+    subtopic: data.subtopic,
+    resources: data.resources,
   };
 
   const accentColor = data.color || '#2563eb';
+  const isExpanded = Boolean(data.isExpanded);
+  const isExpanding = Boolean(data.isExpanding);
+  const isJustExpanded = Boolean(data.justExpanded);
+
+  const handleCardClick = () => {
+    data.onViewDetails?.(nodePayload);
+  };
+
+  const handleViewDetails = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    data.onViewDetails?.(nodePayload);
+  };
+
+  const handleExpand = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (!isExpanding && !isExpanded) {
+      data.onExpand?.(nodePayload);
+    }
+  };
 
   return (
     <div
-      onClick={handleClick}
-      className={`group relative w-[320px] cursor-pointer overflow-hidden rounded-2xl border px-5 py-4 shadow-md transition-all duration-200 hover:-translate-y-1 hover:shadow-2xl ${
-        data.isExpanded ? 'ring-2 ring-offset-2 ring-blue-200/60' : ''
-      } ${data.isNew ? 'node-pop' : ''}`}
+      onClick={handleCardClick}
+      className={`group relative w-[320px] cursor-pointer overflow-hidden rounded-2xl border px-5 py-4 shadow-md transition-all duration-200 ease-out hover:-translate-y-1 hover:shadow-2xl focus-within:-translate-y-1 focus-within:shadow-2xl ${
+        isExpanded ? 'ring-2 ring-offset-2 ring-blue-200/60' : ''
+      } ${isJustExpanded ? 'ring-2 ring-green-400/40 shadow-green-200/50' : ''} ${
+        data.isNew ? 'node-pop' : ''
+      } ${isExpanding ? 'opacity-90' : ''}`}
       style={{
         borderColor: `${accentColor}33`,
-        background: data.isExpanded ? '#f8fbff' : 'rgba(255,255,255,0.95)',
-        boxShadow: `0 10px 34px -14px ${accentColor}55`,
+        background: isExpanded ? '#f8fbff' : 'rgba(255,255,255,0.95)',
+        boxShadow: `0 12px 36px -16px ${accentColor}55`,
       }}
     >
       <div
-        className="absolute inset-0 opacity-0 transition duration-200 group-hover:opacity-100"
+        className="absolute inset-0 opacity-0 transition duration-200 ease-out group-hover:opacity-100"
         style={{
           background: `linear-gradient(135deg, ${accentColor}18 0%, rgba(255,255,255,0) 100%)`,
         }}
@@ -92,7 +121,7 @@ const CustomNode = ({ data }: { data: CustomNodeData }) => {
               {data.subtopic}
             </span>
           )}
-          {data.isExpanding && (
+          {isExpanding && (
             <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
           )}
         </div>
@@ -109,7 +138,7 @@ const CustomNode = ({ data }: { data: CustomNodeData }) => {
             className="h-1.5 w-1.5 rounded-full"
             style={{ background: accentColor }}
           />
-          View more
+          Actions
         </div>
         <Handle
           type="source"
@@ -121,6 +150,38 @@ const CustomNode = ({ data }: { data: CustomNodeData }) => {
             height: 10,
           }}
         />
+        <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 gap-2 opacity-0 transition-all duration-200 ease-out group-hover:opacity-100 group-focus-within:opacity-100">
+          <button
+            type="button"
+            className="pointer-events-auto rounded-md bg-blue-500 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            onClick={handleViewDetails}
+          >
+            🔍 View
+          </button>
+          <button
+            type="button"
+            className={`pointer-events-auto rounded-md px-3 py-1.5 text-xs font-medium text-white shadow-sm transition focus:outline-none focus:ring-2 focus:ring-green-200 ${
+              isExpanded
+                ? 'bg-green-500'
+                : isExpanding
+                ? 'bg-gray-400 cursor-not-allowed'
+                : 'bg-green-500 hover:bg-green-600'
+            }`}
+            onClick={handleExpand}
+            disabled={isExpanding || isExpanded}
+          >
+            {isExpanding ? (
+              <span className="flex items-center gap-1">
+                <span className="inline-flex h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                Expanding…
+              </span>
+            ) : isExpanded ? (
+              '✅ Expanded'
+            ) : (
+              '🌱 Expand'
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -134,8 +195,10 @@ const buildInitialLayout = (
   nodes: Node[],
   edges: Array<{ source: string; target: string }>,
   colorMap: Map<string, string>,
-  onNodeClick: (node: Node) => void
-) => {
+): {
+  rfNodes: ReactFlowNode<CustomNodeData>[];
+  rfEdges: ReactFlowEdge[];
+} => {
   const inDegree = new Map<string, number>();
   const graph = new Map<string, string[]>();
 
@@ -150,11 +213,13 @@ const buildInitialLayout = (
   });
 
   const queue: string[] = [];
-  inDegree.forEach((deg, id) => {
-    if (deg === 0) queue.push(id);
+  inDegree.forEach((degree, id) => {
+    if (degree === 0) {
+      queue.push(id);
+    }
   });
 
-  const levels: Map<string, number> = new Map();
+  const levels = new Map<string, number>();
   const sorted: Node[] = [];
 
   while (queue.length > 0) {
@@ -201,7 +266,8 @@ const buildInitialLayout = (
         data: {
           ...node,
           color,
-          onClick: onNodeClick,
+          onViewDetails: undefined,
+          onExpand: undefined,
         },
       });
     });
@@ -218,7 +284,8 @@ const buildInitialLayout = (
         data: {
           ...node,
           color,
-          onClick: onNodeClick,
+          onViewDetails: undefined,
+          onExpand: undefined,
         },
       });
     });
@@ -244,12 +311,16 @@ export default function LearningMap({
   onToast,
 }: LearningMapProps) {
   const [flowNodes, setFlowNodes] = useState<ReactFlowNode<CustomNodeData>[]>(
-    []
+    [],
   );
   const [flowEdges, setFlowEdges] = useState<ReactFlowEdge[]>([]);
   const [colorMap, setColorMap] = useState<Map<string, string>>(new Map());
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
+  const [expandingNodes, setExpandingNodes] = useState<Set<string>>(new Set());
+  const [recentlyExpanded, setRecentlyExpanded] = useState<Set<string>>(new Set());
+
   const newNodeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recentExpandTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   useEffect(() => {
     const paletteMap = new Map<string, string>();
@@ -263,22 +334,21 @@ export default function LearningMap({
     });
     setColorMap(paletteMap);
 
-    const { rfNodes, rfEdges } = buildInitialLayout(
-      nodes,
-      edges,
-      paletteMap,
-      onNodeClick
-    );
+    const { rfNodes, rfEdges } = buildInitialLayout(nodes, edges, paletteMap);
     setFlowNodes(rfNodes);
     setFlowEdges(rfEdges);
     setExpandedNodes(new Set());
+    setExpandingNodes(new Set());
+    setRecentlyExpanded(new Set());
 
     return () => {
       if (newNodeTimeout.current) {
         clearTimeout(newNodeTimeout.current);
       }
+      Object.values(recentExpandTimeouts.current).forEach(clearTimeout);
+      recentExpandTimeouts.current = {};
     };
-  }, [nodes, edges, onNodeClick]);
+  }, [nodes, edges]);
 
   const assignColor = useCallback(
     (key: string) => {
@@ -292,7 +362,7 @@ export default function LearningMap({
       setColorMap(updated);
       return nextColor;
     },
-    [colorMap]
+    [colorMap],
   );
 
   const showToast = useCallback(
@@ -301,38 +371,27 @@ export default function LearningMap({
         onToast(message);
       }
     },
-    [onToast]
+    [onToast],
   );
 
-  const updateNodeState = useCallback(
-    (nodeId: string, updater: (data: CustomNodeData) => CustomNodeData) => {
-      setFlowNodes((prev) =>
-        prev.map((node) => {
-          if (node.id !== nodeId) {
-            return node;
-          }
-          return {
-            ...node,
-            data: updater(node.data),
-          };
-        })
-      );
-    },
-    []
-  );
-
-  const handleNodeSelect = useCallback(
-    async (nodeData: Node) => {
+  const handleViewDetails = useCallback(
+    (nodeData: Node) => {
       onNodeClick(nodeData);
+    },
+    [onNodeClick],
+  );
 
-      if (expandedNodes.has(nodeData.id)) {
+  const handleExpand = useCallback(
+    async (nodeData: Node) => {
+      if (expandedNodes.has(nodeData.id) || expandingNodes.has(nodeData.id)) {
         return;
       }
 
-      updateNodeState(nodeData.id, (data) => ({
-        ...data,
-        isExpanding: true,
-      }));
+      setExpandingNodes((prev) => {
+        const next = new Set(prev);
+        next.add(nodeData.id);
+        return next;
+      });
 
       try {
         const response = await fetch('http://localhost:3001/api/expand-node', {
@@ -346,7 +405,7 @@ export default function LearningMap({
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}));
           throw new Error(
-            payload.error || 'Unable to expand this node right now.'
+            payload.error || 'Unable to expand this node right now.',
           );
         }
 
@@ -356,9 +415,16 @@ export default function LearningMap({
           : [];
 
         if (!children.length) {
-          showToast('Could not expand — try again.');
+          showToast('⚠️ Could not expand this node — try again.');
+          setExpandingNodes((prev) => {
+            const next = new Set(prev);
+            next.delete(nodeData.id);
+            return next;
+          });
           return;
         }
+
+        let addedChildCount = 0;
 
         setFlowNodes((prevNodes) => {
           const parentNode = prevNodes.find((node) => node.id === nodeData.id);
@@ -368,23 +434,12 @@ export default function LearningMap({
 
           const existingIds = new Set(prevNodes.map((node) => node.id));
           const validChildren = children.filter(
-            (child) => !existingIds.has(child.id)
+            (child) => !existingIds.has(child.id),
           );
+          addedChildCount = validChildren.length;
 
           if (!validChildren.length) {
-            return prevNodes.map((node) => {
-              if (node.id === nodeData.id) {
-                return {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    isExpanding: false,
-                    isExpanded: false,
-                  },
-                };
-              }
-              return node;
-            });
+            return prevNodes;
           }
 
           const childCount = validChildren.length;
@@ -394,8 +449,7 @@ export default function LearningMap({
           const verticalOffset = 190;
 
           const additionalNodes = validChildren.map((child, index) => {
-            const offset =
-              (index - (childCount - 1) / 2) * horizontalSpacing;
+            const offset = (index - (childCount - 1) / 2) * horizontalSpacing;
             const position = {
               x: baseX + offset,
               y: baseY + verticalOffset,
@@ -410,7 +464,8 @@ export default function LearningMap({
                 ...child,
                 color,
                 isNew: true,
-                onClick: handleNodeSelect,
+                onViewDetails: handleViewDetails,
+                onExpand: handleExpand,
               },
             } as ReactFlowNode<CustomNodeData>;
           });
@@ -431,9 +486,9 @@ export default function LearningMap({
                   };
                 }
                 return node;
-              })
+              }),
             );
-          }, 400);
+          }, 300);
 
           setFlowEdges((prevEdges) => [
             ...prevEdges,
@@ -451,36 +506,64 @@ export default function LearningMap({
             onExpand(nodeData.id, validChildren);
           }
 
-          const nextExpanded = new Set(expandedNodes);
-          nextExpanded.add(nodeData.id);
-          setExpandedNodes(nextExpanded);
-
-          return prevNodes
-            .map((node) => {
-              if (node.id === nodeData.id) {
-                return {
-                  ...node,
-                  data: {
-                    ...node.data,
-                    isExpanding: false,
-                    isExpanded: true,
-                  },
-                };
-              }
-              return node;
-            })
-            .concat(additionalNodes);
+          return prevNodes.map((node) => {
+            if (node.id === nodeData.id) {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  isExpanded: true,
+                },
+              };
+            }
+            return node;
+          }).concat(additionalNodes);
         });
+
+        if (addedChildCount > 0) {
+          setExpandedNodes((prev) => {
+            const next = new Set(prev);
+            next.add(nodeData.id);
+            return next;
+          });
+          setRecentlyExpanded((prev) => {
+            const next = new Set(prev);
+            next.add(nodeData.id);
+            return next;
+          });
+          if (recentExpandTimeouts.current[nodeData.id]) {
+            clearTimeout(recentExpandTimeouts.current[nodeData.id]);
+          }
+          recentExpandTimeouts.current[nodeData.id] = setTimeout(() => {
+            setRecentlyExpanded((prev) => {
+              if (!prev.has(nodeData.id)) {
+                return prev;
+              }
+              const next = new Set(prev);
+              next.delete(nodeData.id);
+              return next;
+            });
+            delete recentExpandTimeouts.current[nodeData.id];
+          }, 1000);
+
+          showToast(
+            `🌱 Added ${addedChildCount} new concept${
+              addedChildCount > 1 ? 's' : ''
+            } under ${nodeData.label}.`,
+          );
+        }
       } catch (error) {
         console.error(error);
-        showToast('Could not expand — try again.');
-        updateNodeState(nodeData.id, (data) => ({
-          ...data,
-          isExpanding: false,
-        }));
+        showToast('⚠️ Could not expand this node — try again.');
+      } finally {
+        setExpandingNodes((prev) => {
+          const next = new Set(prev);
+          next.delete(nodeData.id);
+          return next;
+        });
       }
     },
-    [assignColor, expandedNodes, onExpand, onNodeClick, showToast, updateNodeState]
+    [assignColor, expandedNodes, expandingNodes, handleViewDetails, onExpand, showToast],
   );
 
   useEffect(() => {
@@ -489,11 +572,15 @@ export default function LearningMap({
         ...node,
         data: {
           ...node.data,
-          onClick: handleNodeSelect,
+          onViewDetails: handleViewDetails,
+          onExpand: handleExpand,
+          isExpanding: expandingNodes.has(node.id),
+          isExpanded: expandedNodes.has(node.id),
+          justExpanded: recentlyExpanded.has(node.id),
         },
-      }))
+      })),
     );
-  }, [handleNodeSelect]);
+  }, [handleViewDetails, handleExpand, expandingNodes, expandedNodes, recentlyExpanded]);
 
   return (
     <div className="h-[620px] w-full overflow-hidden rounded-3xl border border-slate-200/70 bg-gradient-to-br from-slate-50 via-white to-slate-100 shadow-xl">
