@@ -8,6 +8,8 @@ export interface Node {
   description: string;
   subtopic?: string;
   resources: string[];
+  level?: 'Beginner' | 'Intermediate' | 'Advanced';
+  unverified?: boolean;
 }
 
 export interface Edge {

@@ -68,10 +68,17 @@ export default function NodeDetails({ node, onClose }: NodeDetailsProps) {
         </div>
 
         <section className="flex-1 overflow-y-auto px-5 pb-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
-              Resources
-            </h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">
+                Resources
+              </h2>
+              {node.unverified && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+                  ⚠︎ Links unverified
+                </span>
+              )}
+            </div>
             {node.resources.length > 0 && (
               <span className="text-[10px] font-medium uppercase tracking-[0.16em] text-slate-400">
                 Curated • {node.resources.length}

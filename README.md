@@ -13,6 +13,14 @@ The Learning Map Generator is a full-stack web application that:
 
 Perfect for students, educators, and anyone looking to create structured learning paths for complex topics.
 
+## ✨ Highlights
+
+- Intelligent learning map generation with optional difficulty levels (Beginner / Intermediate / Advanced)
+- One-click related topic suggestions to explore adjacent areas
+- Collapsible / re-expandable subtrees for taming complex maps
+- Resource validation with optional link health checks
+- JSON import/export plus auto-save and resume banner for fast iteration
+
 ## 🚀 Tech Stack
 
 ### Frontend
@@ -86,6 +94,7 @@ GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-1.5-flash
 GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta
 PORT=3001
+VALIDATE_URLS=false
 ```
 
 5. Start the server:
@@ -111,12 +120,24 @@ cd frontend
 npm install
 ```
 
-3. Start the development server:
+3. (Optional) Configure the backend base URL by creating `frontend/.env.local`:
+```env
+NEXT_PUBLIC_API_BASE_URL=http://localhost:3001
+```
+
+4. Start the development server:
 ```bash
 npm run dev
 ```
 
 The frontend will be available at `http://localhost:3000`
+
+5. Useful scripts:
+```bash
+npm run build   # production build
+npm run start   # run the production build
+npm run lint    # ESLint (non-interactive)
+```
 
 4. For production build:
 ```bash
@@ -174,7 +195,8 @@ Generates a learning map for the given topic.
       "id": "node-1",
       "label": "Introduction to ML",
       "description": "Learn the fundamentals of machine learning...",
-      "subtopic": "Basics"
+      "subtopic": "Basics",
+      "level": "Beginner"
     }
   ],
   "edges": [
@@ -186,9 +208,59 @@ Generates a learning map for the given topic.
 }
 ```
 
-### GET `/health`
+### POST `/api/expand-node`
 
-Health check endpoint to verify the API is running.
+Expands a node into 3–5 additional child concepts.
+
+**Request:**
+```json
+{
+  "nodeTitle": "Databases: SQL vs. NoSQL"
+}
+```
+
+**Response:**
+```json
+{
+  "node": "Databases: SQL vs. NoSQL",
+  "children": [
+    {
+      "id": "sql-normalization",
+      "label": "Normalization",
+      "description": "Study database normalization techniques...",
+      "level": "Intermediate",
+      "resources": [
+        "https://example.com/normalization"
+      ]
+    }
+  ]
+}
+```
+
+### POST `/api/related-topics`
+
+Returns 4–6 closely related topics for the current map.
+
+**Request:**
+```json
+{
+  "topic": "Machine Learning"
+}
+```
+
+**Response:**
+```json
+{
+  "topics": [
+    "Deep Learning",
+    "Data Pipelines",
+    "Feature Engineering",
+    "Model Deployment"
+  ]
+}
+```
+
+### GET `/health`
 
 ## ⚙️ Configuration
 
@@ -199,28 +271,22 @@ Health check endpoint to verify the API is running.
 | `GEMINI_API_KEY` | Your Gemini API key | Yes | - |
 | `GEMINI_MODEL` | Model to use (`gemini-1.5-flash`, etc.) | No | `gemini-1.5-flash` |
 | `GEMINI_API_BASE_URL` | Base URL for the Gemini API | No | `https://generativelanguage.googleapis.com/v1beta` |
+| `VALIDATE_URLS` | Enable HEAD checks for resource URLs (`true`/`false`) | No | `false` |
 | `PORT` | Server port | No | `3001` |
 
 ### Frontend Configuration
 
-The API URL is configured in `frontend/app/page.tsx`. Update it if your backend runs on a different host or port:
-
-```typescript
-const response = await fetch('http://localhost:3001/api/generate-map', {
-  // ...
-});
-```
+The frontend uses `frontend/utils/api.ts` to centralize API calls. Set `NEXT_PUBLIC_API_BASE_URL` when the backend is hosted elsewhere (defaults to `http://localhost:3001`).
 
 ## 🚢 How to Deploy
 
 ### Backend Deployment
 
-1. **Environment Variables**: Set `DEEPSEEK_API_KEY` and other vars in your hosting platform
+1. **Environment Variables**: Set `GEMINI_API_KEY`, `GEMINI_MODEL`, and any optional flags (`VALIDATE_URLS`) in your hosting platform
 2. **Popular Options**:
-   - **Vercel**: Add `vercel.json` and deploy
-   - **Heroku**: Use Heroku config vars
-   - **Railway**: Set environment variables in dashboard
-   - **AWS/DigitalOcean**: Use PM2 or similar process manager
+   - **Render / Railway**: Simple managed Node hosting with env var UI
+   - **Heroku**: Use config vars + Procfile
+   - **AWS / DigitalOcean**: Use PM2 or Docker to keep the process alive
 
 ### Frontend Deployment
 
@@ -230,22 +296,22 @@ cd frontend
 npm run build
 ```
 
-2. **Update API URL**: Change the backend URL in `app/page.tsx` to your production API URL
+2. **Update API URL**: Set `NEXT_PUBLIC_API_BASE_URL` to your production backend URL (e.g. in Vercel project settings)
 
 3. **Deploy Options**:
-   - **Vercel** (Recommended for Next.js): Connect your GitHub repo
-   - **Netlify**: Deploy from build folder
-   - **AWS Amplify**: Connect GitHub and deploy
+   - **Vercel** (Recommended for Next.js)
+   - **Netlify**
+   - **AWS Amplify**
 
 ### Full-Stack Deployment (Vercel)
 
-1. Deploy backend as a Vercel serverless function
+1. Deploy backend on Render/Railway/other Node host (ensuring CORS is allowed)
 2. Deploy frontend to Vercel
-3. Update frontend API URL to point to backend Vercel URL
+3. Set `NEXT_PUBLIC_API_BASE_URL` to the backend URL in the Vercel dashboard
 
 ### Environment Variables in Production
 
-Always store sensitive keys (like `DEEPSEEK_API_KEY`) as environment variables in your hosting platform, never commit them to git.
+Always store sensitive keys (like `GEMINI_API_KEY`) as environment variables in your hosting platform—never commit them to git.
 
 ## 🧪 Development
 

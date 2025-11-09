@@ -4,6 +4,7 @@ import type { MouseEvent } from 'react';
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -21,6 +22,9 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Node } from '@/utils/types';
+import { postJSON } from '@/utils/api';
+
+type Level = 'All' | 'Beginner' | 'Intermediate' | 'Advanced';
 
 interface LearningMapProps {
   nodes: Node[];
@@ -28,6 +32,7 @@ interface LearningMapProps {
   onNodeClick: (node: Node) => void;
   onExpand?: (parentId: string, children: Node[]) => void;
   onToast?: (message: string) => void;
+  levelFilter: Level;
 }
 
 type CustomNodeData = Node & {
@@ -38,8 +43,17 @@ type CustomNodeData = Node & {
   isNew?: boolean;
   appearDelay?: number;
   tooltipCount?: number;
+  hasCachedChildren?: boolean;
+  hasChildren?: boolean;
+  childrenVisible?: boolean;
   onViewDetails?: (node: Node) => void;
   onExpand?: (node: Node) => void;
+  onToggleChildren?: (node: Node) => void;
+};
+
+type CachedChildren = {
+  nodes: ReactFlowNode<CustomNodeData>[];
+  edges: ReactFlowEdge[];
 };
 
 const SUBTOPIC_PALETTE = [
@@ -61,12 +75,16 @@ const CustomNode = ({ data }: { data: CustomNodeData }) => {
     description: data.description,
     subtopic: data.subtopic,
     resources: data.resources,
+    level: data.level,
+    unverified: data.unverified,
   };
 
   const accentColor = data.color || '#2563eb';
   const isExpanded = Boolean(data.isExpanded);
   const isExpanding = Boolean(data.isExpanding);
   const isJustExpanded = Boolean(data.justExpanded);
+  const hasCachedChildren = Boolean(data.hasCachedChildren);
+  const childrenVisible = Boolean(data.childrenVisible);
 
   const handleCardClick = () => {
     data.onViewDetails?.(nodePayload);
@@ -84,11 +102,16 @@ const CustomNode = ({ data }: { data: CustomNodeData }) => {
     }
   };
 
-  const transitionBase = 'opacity 350ms ease-out, transform 350ms ease-out';
+  const handleToggleChildren = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    data.onToggleChildren?.(nodePayload);
+  };
+
+  const transitionBase = 'opacity 320ms ease-out, transform 320ms ease-out';
   const styleWhenNew = data.isNew
     ? {
         opacity: 0,
-        transform: 'translateY(-20px) scale(0.9)',
+        transform: 'translateY(-18px) scale(0.94)',
         transition: transitionBase,
         transitionDelay: `${data.appearDelay ?? 0}ms`,
       }
@@ -99,9 +122,15 @@ const CustomNode = ({ data }: { data: CustomNodeData }) => {
       };
 
   const expandingClasses = isExpanding
-    ? 'opacity-70 scale-[0.98] ring-2 ring-green-400/50 animate-pulse'
+    ? 'opacity-70 scale-[0.98] ring-2 ring-green-400/60 animate-pulse'
     : '';
   const expandedClasses = isJustExpanded ? 'node-bounce node-flash' : '';
+
+  const levelBadge = data.level ? (
+      <span className="inline-flex items-center rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-blue-600 shadow-sm">
+        {data.level}
+      </span>
+    ) : null;
 
   return (
     <div
@@ -112,14 +141,14 @@ const CustomNode = ({ data }: { data: CustomNodeData }) => {
       style={{
         borderColor: `${accentColor}33`,
         background: isExpanded ? '#f8fbff' : 'rgba(255,255,255,0.95)',
-        boxShadow: `0 12px 36px -16px ${accentColor}55`,
+        boxShadow: `0 12px 32px -18px ${accentColor}66`,
         ...styleWhenNew,
       }}
     >
       <div
         className="absolute inset-0 opacity-0 transition duration-200 ease-out group-hover:opacity-100"
         style={{
-          background: `linear-gradient(135deg, ${accentColor}18 0%, rgba(255,255,255,0) 100%)`,
+          background: `linear-gradient(135deg, ${accentColor}20 0%, rgba(255,255,255,0) 100%)`,
         }}
       />
       <div className="relative z-10 space-y-3">
@@ -142,9 +171,7 @@ const CustomNode = ({ data }: { data: CustomNodeData }) => {
               {data.subtopic}
             </span>
           )}
-          {isExpanding && (
-            <span className="inline-flex h-4 w-4 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
-          )}
+          {levelBadge}
         </div>
         <div className="space-y-1">
           <h3 className="text-sm font-semibold leading-snug text-slate-900">
@@ -153,13 +180,6 @@ const CustomNode = ({ data }: { data: CustomNodeData }) => {
           <p className="line-clamp-3 text-xs leading-relaxed text-slate-500">
             {data.description}
           </p>
-        </div>
-        <div className="flex items-center gap-2 text-[11px] font-medium text-slate-500">
-          <span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ background: accentColor }}
-          />
-          Actions
         </div>
         <Handle
           type="source"
@@ -171,43 +191,63 @@ const CustomNode = ({ data }: { data: CustomNodeData }) => {
             height: 10,
           }}
         />
-        <div className="pointer-events-none absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 gap-2 opacity-0 transition-all duration-200 ease-out group-hover:opacity-100 group-focus-within:opacity-100">
-          <button
-            type="button"
-            className="pointer-events-auto rounded-md bg-blue-500 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-200"
-            onClick={handleViewDetails}
-          >
-            🔍 View
-          </button>
-          <button
-            type="button"
-            className={`pointer-events-auto rounded-md px-3 py-1.5 text-xs font-medium text-white shadow-sm transition focus:outline-none focus:ring-2 focus:ring-green-200 ${
-              isExpanded
-                ? 'bg-green-500'
-                : isExpanding
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-green-500 hover:bg-green-600'
-            }`}
-            onClick={handleExpand}
-            disabled={isExpanding || isExpanded}
-          >
-            {isExpanding ? (
-              <span className="flex items-center gap-1">
-                <span className="inline-flex h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                Expanding…
-              </span>
-            ) : isExpanded ? (
-              '✅ Expanded'
-            ) : (
-              '🌱 Expand'
-            )}
-          </button>
-        </div>
         {typeof data.tooltipCount === 'number' && data.tooltipCount > 0 && (
           <div className="pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700 shadow transition-opacity duration-300">
             🌱 Added {data.tooltipCount} concept{data.tooltipCount > 1 ? 's' : ''}
           </div>
         )}
+        <div className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 gap-2 opacity-0 transition-all duration-200 ease-out group-hover:opacity-100 group-focus-within:opacity-100">
+          <button
+            type="button"
+            className="rounded-md bg-blue-500 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            onClick={handleViewDetails}
+          >
+            View
+          </button>
+          {hasCachedChildren ? (
+            <button
+              type="button"
+              className={`rounded-md px-3 py-1.5 text-xs font-medium text-white shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-200 ${
+                isExpanding ? 'bg-slate-400 cursor-not-allowed' : 'bg-indigo-500 hover:bg-indigo-600'
+              }`}
+              onClick={handleToggleChildren}
+              disabled={isExpanding}
+            >
+              {isExpanding ? (
+                <span className="flex items-center gap-1">
+                  <span className="inline-flex h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  {childrenVisible ? 'Collapsing…' : 'Re-expand…'}
+                </span>
+              ) : childrenVisible ? (
+                'Collapse'
+              ) : (
+                'Re-expand'
+              )}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className={`rounded-md px-3 py-1.5 text-xs font-medium text-white shadow-sm transition focus:outline-none focus:ring-2 focus:ring-green-200 ${
+                isExpanding || isExpanded
+                  ? 'bg-slate-400 cursor-not-allowed'
+                  : 'bg-green-500 hover:bg-green-600'
+              }`}
+              onClick={handleExpand}
+              disabled={isExpanding || isExpanded}
+            >
+              {isExpanding ? (
+                <span className="flex items-center gap-1">
+                  <span className="inline-flex h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Expanding…
+                </span>
+              ) : isExpanded ? (
+                'Expanded'
+              ) : (
+                'Expand'
+              )}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -248,14 +288,15 @@ const buildInitialLayout = (
   const levels = new Map<string, number>();
   const sorted: Node[] = [];
 
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    const level = levels.get(current) ?? 0;
-    const currentNode = nodes.find((node) => node.id === current);
-    if (currentNode) {
-      sorted.push(currentNode);
+  while (queue.length) {
+    const id = queue.shift()!;
+    const node = nodes.find((item) => item.id === id);
+    if (!node) {
+      continue;
     }
-    graph.get(current)?.forEach((neighbor) => {
+    sorted.push(node);
+    const level = levels.get(id) ?? 0;
+    graph.get(id)?.forEach((neighbor) => {
       inDegree.set(neighbor, (inDegree.get(neighbor) || 0) - 1);
       if ((inDegree.get(neighbor) || 0) === 0) {
         queue.push(neighbor);
@@ -280,8 +321,8 @@ const buildInitialLayout = (
   nodesByLevel.forEach((levelNodes, level) => {
     const totalWidth = (levelNodes.length - 1) * spacingX;
     levelNodes.forEach((node, index) => {
-      const color =
-        colorMap.get(node.subtopic ?? node.id) ?? SUBTOPIC_PALETTE[0];
+      const key = node.subtopic ?? node.id;
+      const color = colorMap.get(key) ?? SUBTOPIC_PALETTE[0];
       rfNodes.push({
         id: node.id,
         type: 'custom',
@@ -292,8 +333,6 @@ const buildInitialLayout = (
         data: {
           ...node,
           color,
-          onViewDetails: undefined,
-          onExpand: undefined,
         },
       });
     });
@@ -301,8 +340,8 @@ const buildInitialLayout = (
 
   if (rfNodes.length === 0) {
     nodes.forEach((node, index) => {
-      const color =
-        colorMap.get(node.subtopic ?? node.id) ?? SUBTOPIC_PALETTE[0];
+      const key = node.subtopic ?? node.id;
+      const color = colorMap.get(key) ?? SUBTOPIC_PALETTE[0];
       rfNodes.push({
         id: node.id,
         type: 'custom',
@@ -310,8 +349,6 @@ const buildInitialLayout = (
         data: {
           ...node,
           color,
-          onViewDetails: undefined,
-          onExpand: undefined,
         },
       });
     });
@@ -335,21 +372,24 @@ function InnerLearningMap({
   onNodeClick,
   onExpand,
   onToast,
+  levelFilter,
 }: LearningMapProps) {
   const reactFlow = useReactFlow<CustomNodeData>();
-  const [flowNodes, setFlowNodes] = useState<ReactFlowNode<CustomNodeData>[]>(
-    [],
-  );
+  const [flowNodes, setFlowNodes] = useState<ReactFlowNode<CustomNodeData>[]>([]);
   const [flowEdges, setFlowEdges] = useState<ReactFlowEdge[]>([]);
   const [colorMap, setColorMap] = useState<Map<string, string>>(new Map());
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [expandingNodes, setExpandingNodes] = useState<Set<string>>(new Set());
   const [recentlyExpanded, setRecentlyExpanded] = useState<Set<string>>(new Set());
   const [tooltip, setTooltip] = useState<{ nodeId: string; count: number } | null>(null);
+  const [childrenCache, setChildrenCache] = useState<Record<string, CachedChildren>>({});
+  const [visibleChildMap, setVisibleChildMap] = useState<Record<string, string[]>>({});
+  const [filtering, setFiltering] = useState(false);
 
   const newNodeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recentExpandTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const tooltipTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const expandCooldownRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
     const paletteMap = new Map<string, string>();
@@ -370,10 +410,14 @@ function InnerLearningMap({
     setExpandingNodes(new Set());
     setRecentlyExpanded(new Set());
     setTooltip(null);
+    setChildrenCache({});
+    setVisibleChildMap({});
+    expandCooldownRef.current = {};
 
     return () => {
       if (newNodeTimeout.current) {
         clearTimeout(newNodeTimeout.current);
+        newNodeTimeout.current = null;
       }
       Object.values(recentExpandTimeouts.current).forEach(clearTimeout);
       recentExpandTimeouts.current = {};
@@ -384,13 +428,28 @@ function InnerLearningMap({
     };
   }, [nodes, edges]);
 
+  useEffect(() => {
+    if (!flowNodes.length) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      try {
+        reactFlow.fitView({ padding: 0.2, duration: 600 });
+      } catch (error) {
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('ReactFlow fitView failed', error);
+        }
+      }
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [flowNodes.length, reactFlow]);
+
   const assignColor = useCallback(
     (key: string) => {
       if (colorMap.has(key)) {
         return colorMap.get(key)!;
       }
-      const nextColor =
-        SUBTOPIC_PALETTE[colorMap.size % SUBTOPIC_PALETTE.length];
+      const nextColor = SUBTOPIC_PALETTE[colorMap.size % SUBTOPIC_PALETTE.length];
       const updated = new Map(colorMap);
       updated.set(key, nextColor);
       setColorMap(updated);
@@ -415,11 +474,164 @@ function InnerLearningMap({
     [onNodeClick],
   );
 
+  const collectDescendantIds = useCallback(
+    (parentId: string): string[] => {
+      const entry = childrenCache[parentId];
+      if (!entry) {
+        return [];
+      }
+      const result: string[] = [];
+      const stack = [...entry.nodes];
+      while (stack.length) {
+        const current = stack.pop()!;
+        result.push(current.id);
+        const nested = childrenCache[current.id];
+        if (nested) {
+          stack.push(...nested.nodes);
+        }
+      }
+      return result;
+    },
+    [childrenCache],
+  );
+
+  const collapseChildren = useCallback(
+    (parentId: string) => {
+      const visibleChildren = visibleChildMap[parentId];
+      if (!visibleChildren || visibleChildren.length === 0) {
+        return false;
+      }
+
+      setChildrenCache((prev) => {
+        const entry = prev[parentId];
+        if (!entry) {
+          return prev;
+        }
+        const currentById = new Map(flowNodes.map((node) => [node.id, node]));
+        const updatedNodes = entry.nodes.map((node) => {
+          const current = currentById.get(node.id);
+          if (!current) {
+            return node;
+          }
+          return {
+            ...current,
+            data: {
+              ...current.data,
+              isNew: false,
+              appearDelay: 0,
+            },
+          };
+        });
+        return {
+          ...prev,
+          [parentId]: {
+            ...entry,
+            nodes: updatedNodes,
+          },
+        };
+      });
+
+      const idsToRemove = new Set(collectDescendantIds(parentId));
+      if (idsToRemove.size === 0) {
+        return false;
+      }
+
+      setFlowNodes((prev) => prev.filter((node) => !idsToRemove.has(node.id)));
+      setFlowEdges((prev) =>
+        prev.filter(
+          (edge) => !idsToRemove.has(edge.source) && !idsToRemove.has(edge.target),
+        ),
+      );
+
+      setVisibleChildMap((prev) => {
+        const next = { ...prev };
+        next[parentId] = [];
+        idsToRemove.forEach((id) => {
+          if (next[id]) {
+            next[id] = [];
+          }
+        });
+        return next;
+      });
+
+      setRecentlyExpanded((prev) => {
+        const next = new Set(prev);
+        next.delete(parentId);
+        return next;
+      });
+
+      return true;
+    },
+    [collectDescendantIds, flowNodes, visibleChildMap],
+  );
+
+  const reexpandChildren = useCallback(
+    (parentId: string) => {
+      const cache = childrenCache[parentId];
+      if (!cache) {
+        return false;
+      }
+
+      let nodesToRestore: ReactFlowNode<CustomNodeData>[] = [];
+      setFlowNodes((prevNodes) => {
+        const existingIds = new Set(prevNodes.map((node) => node.id));
+        nodesToRestore = cache.nodes.filter((node) => !existingIds.has(node.id));
+        if (!nodesToRestore.length) {
+          return prevNodes;
+        }
+        const hydrated = nodesToRestore.map((node, index) => ({
+          ...node,
+          data: {
+            ...node.data,
+            isNew: true,
+            appearDelay: index * 40,
+          },
+        }));
+        return prevNodes.concat(hydrated);
+      });
+
+      if (!nodesToRestore.length) {
+        return false;
+      }
+
+      setFlowEdges((prevEdges) => {
+        const existingEdgeIds = new Set(prevEdges.map((edge) => edge.id));
+        const edgesToAdd = cache.edges.filter((edge) => !existingEdgeIds.has(edge.id));
+        if (!edgesToAdd.length) {
+          return prevEdges;
+        }
+        return prevEdges.concat(edgesToAdd);
+      });
+
+      setVisibleChildMap((prev) => ({
+        ...prev,
+        [parentId]: nodesToRestore.map((node) => node.id),
+      }));
+
+      setRecentlyExpanded((prev) => {
+        const next = new Set(prev);
+        next.add(parentId);
+        return next;
+      });
+
+      return true;
+    },
+    [childrenCache],
+  );
+
   const handleExpand = useCallback(
     async (nodeData: Node) => {
+      const now = Date.now();
+      const lastAttempt = expandCooldownRef.current[nodeData.id] || 0;
+      if (now - lastAttempt < 800) {
+        return;
+      }
+
       if (expandedNodes.has(nodeData.id) || expandingNodes.has(nodeData.id)) {
         return;
       }
+
+      expandCooldownRef.current[nodeData.id] = now;
 
       setExpandingNodes((prev) => {
         const next = new Set(prev);
@@ -428,22 +640,10 @@ function InnerLearningMap({
       });
 
       try {
-        const response = await fetch('http://localhost:3001/api/expand-node', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ nodeTitle: nodeData.label }),
-        });
-
-        if (!response.ok) {
-          const payload = await response.json().catch(() => ({}));
-          throw new Error(
-            payload.error || 'Unable to expand this node right now.',
-          );
-        }
-
-        const expansion = await response.json();
+        const expansion = await postJSON<{ node: string; children: Node[] }>(
+          '/api/expand-node',
+          { nodeTitle: nodeData.label },
+        );
         const children: Node[] = Array.isArray(expansion.children)
           ? expansion.children
           : [];
@@ -459,6 +659,9 @@ function InnerLearningMap({
         }
 
         let addedChildCount = 0;
+        let cachedNodes: ReactFlowNode<CustomNodeData>[] = [];
+        let cachedEdges: ReactFlowEdge[] = [];
+        let childIdsForParent: string[] = [];
 
         setFlowNodes((prevNodes) => {
           const parentNode = prevNodes.find((node) => node.id === nodeData.id);
@@ -467,9 +670,7 @@ function InnerLearningMap({
           }
 
           const existingIds = new Set(prevNodes.map((node) => node.id));
-          const validChildren = children.filter(
-            (child) => !existingIds.has(child.id),
-          );
+          const validChildren = children.filter((child) => !existingIds.has(child.id));
           addedChildCount = validChildren.length;
 
           if (!validChildren.length) {
@@ -479,28 +680,26 @@ function InnerLearningMap({
           const childCount = validChildren.length;
           const baseX = parentNode.position.x;
           const baseY = parentNode.position.y;
-          const horizontalSpacing = 200;
+          const horizontalSpacing = 210;
           const verticalOffset = 190;
 
-          const additionalNodes = validChildren.map((child, index) => {
+          const newlyCreatedNodes = validChildren.map((child, index) => {
             const offset = (index - (childCount - 1) / 2) * horizontalSpacing;
             const position = {
               x: baseX + offset,
               y: baseY + verticalOffset,
             };
-            const color = assignColor(child.id);
+            const color = assignColor(child.subtopic ?? child.id);
 
             return {
               id: child.id,
-              type: 'custom',
+      type: 'custom',
               position,
               data: {
                 ...child,
                 color,
                 isNew: true,
                 appearDelay: index * 50,
-                onViewDetails: handleViewDetails,
-                onExpand: handleExpand,
               },
             } as ReactFlowNode<CustomNodeData>;
           });
@@ -508,55 +707,80 @@ function InnerLearningMap({
           if (newNodeTimeout.current) {
             clearTimeout(newNodeTimeout.current);
           }
-          newNodeTimeout.current = setTimeout(() => {
-            setFlowNodes((current) =>
-              current.map((node) => {
-                if (validChildren.some((child) => child.id === node.id)) {
-                  return {
-                    ...node,
-                    data: {
-                      ...node.data,
-                      isNew: false,
-                    },
-                  };
-                }
-                return node;
-              }),
-            );
-          }, 350);
+          if (validChildren.length) {
+            newNodeTimeout.current = setTimeout(() => {
+              setFlowNodes((current) =>
+                current.map((node) => {
+                  if (validChildren.some((child) => child.id === node.id)) {
+                    return {
+                      ...node,
+      data: {
+                        ...node.data,
+                        isNew: false,
+                      },
+                    };
+                  }
+                  return node;
+                }),
+              );
+            }, 350);
+          }
 
-          setFlowEdges((prevEdges) => [
-            ...prevEdges,
-            ...validChildren.map((child) => ({
-              id: `edge-${nodeData.id}-${child.id}-${Date.now()}`,
-              source: nodeData.id,
-              target: child.id,
-              animated: true,
-              type: 'smoothstep',
-              style: { stroke: 'rgba(37, 99, 235, 0.35)', strokeWidth: 2.2 },
-            })),
-          ]);
+          cachedNodes = newlyCreatedNodes.map((node) => ({
+        ...node,
+            data: {
+              ...node.data,
+              isNew: false,
+              appearDelay: 0,
+      },
+    }));
+          cachedEdges = validChildren.map((child) => ({
+            id: `edge-${nodeData.id}-${child.id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            source: nodeData.id,
+            target: child.id,
+            animated: true,
+            type: 'smoothstep',
+            style: { stroke: 'rgba(37, 99, 235, 0.35)', strokeWidth: 2.2 },
+          }));
+          childIdsForParent = newlyCreatedNodes.map((node) => node.id);
 
           if (onExpand) {
             onExpand(nodeData.id, validChildren);
           }
 
-          return prevNodes.map((node) => {
-            if (node.id === nodeData.id) {
-              return {
-                ...node,
-                data: {
-                  ...node.data,
-                  isExpanded: true,
-                  justExpanded: true,
-                },
-              };
-            }
-            return node;
-          }).concat(additionalNodes);
+          return prevNodes
+            .map((node) => {
+              if (node.id === nodeData.id) {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    isExpanded: true,
+                    justExpanded: true,
+                  },
+                };
+              }
+              return node;
+            })
+            .concat(newlyCreatedNodes);
         });
 
+        if (cachedEdges.length) {
+          setFlowEdges((prevEdges) => prevEdges.concat(cachedEdges));
+        }
+
         if (addedChildCount > 0) {
+          setChildrenCache((prev) => ({
+            ...prev,
+            [nodeData.id]: {
+              nodes: cachedNodes,
+              edges: cachedEdges,
+            },
+          }));
+          setVisibleChildMap((prev) => ({
+            ...prev,
+            [nodeData.id]: childIdsForParent,
+          }));
           setExpandedNodes((prev) => {
             const next = new Set(prev);
             next.add(nodeData.id);
@@ -592,13 +816,17 @@ function InnerLearningMap({
           }, 1600);
 
           showToast(
-            `🌱 Added ${addedChildCount} new concept${
-              addedChildCount > 1 ? 's' : ''
-            } under ${nodeData.label}.`,
+            `🌱 Added ${addedChildCount} new concept${addedChildCount > 1 ? 's' : ''} under ${nodeData.label}.`,
           );
 
           setTimeout(() => {
-            reactFlow.fitView({ padding: 0.2, duration: 800 });
+            try {
+              reactFlow.fitView({ padding: 0.2, duration: 800 });
+            } catch (error) {
+              if (process.env.NODE_ENV !== 'production') {
+                console.warn('ReactFlow fitView failed', error);
+              }
+            }
           }, 80);
         }
       } catch (error) {
@@ -612,37 +840,179 @@ function InnerLearningMap({
         });
       }
     },
-    [assignColor, expandedNodes, expandingNodes, handleViewDetails, onExpand, reactFlow, showToast],
+    [
+      assignColor,
+      expandedNodes,
+      expandingNodes,
+      reactFlow,
+      showToast,
+      onExpand,
+    ],
   );
 
+  const handleToggleChildren = useCallback(
+    (node: Node) => {
+      const isVisible =
+        Boolean(visibleChildMap[node.id]) && visibleChildMap[node.id].length > 0;
+
+      setExpandingNodes((prev) => {
+        const next = new Set(prev);
+        next.add(node.id);
+        return next;
+      });
+
+      const finish = () =>
+        setExpandingNodes((prev) => {
+          const next = new Set(prev);
+          next.delete(node.id);
+          return next;
+        });
+
+      if (isVisible) {
+        const collapsed = collapseChildren(node.id);
+        if (!collapsed) {
+          finish();
+          return;
+        }
+        setTimeout(finish, 180);
+      } else {
+        const restored = reexpandChildren(node.id);
+        if (!restored) {
+          finish();
+          return;
+        }
+        setTimeout(() => {
+          try {
+            reactFlow.fitView({ padding: 0.2, duration: 600 });
+          } catch (error) {
+            if (process.env.NODE_ENV !== 'production') {
+              console.warn('ReactFlow fitView failed', error);
+            }
+          }
+          finish();
+        }, 80);
+      }
+    },
+    [collapseChildren, reexpandChildren, reactFlow, visibleChildMap],
+  );
+
+  const enrichedNodes = useMemo(
+    () =>
+      flowNodes.map((node) => {
+        const cachedEntry = childrenCache[node.id];
+        const hasCached = Boolean(cachedEntry && cachedEntry.nodes.length > 0);
+        const visible =
+          Boolean(visibleChildMap[node.id]) && visibleChildMap[node.id].length > 0;
+
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            onViewDetails: handleViewDetails,
+            onExpand: handleExpand,
+            onToggleChildren: hasCached ? handleToggleChildren : undefined,
+            isExpanding: expandingNodes.has(node.id),
+            isExpanded: expandedNodes.has(node.id),
+            justExpanded: recentlyExpanded.has(node.id),
+            tooltipCount:
+              tooltip && tooltip.nodeId === node.id ? tooltip.count : undefined,
+            hasCachedChildren: hasCached,
+            hasChildren: hasCached,
+            childrenVisible: visible,
+          },
+        };
+      }),
+    [
+      childrenCache,
+      expandingNodes,
+      expandedNodes,
+      flowNodes,
+      handleExpand,
+      handleToggleChildren,
+      handleViewDetails,
+      recentlyExpanded,
+      tooltip,
+      visibleChildMap,
+    ],
+  );
+
+  const getLevel = useCallback((node: CustomNodeData): Level => {
+    if (node.level && ['Beginner', 'Intermediate', 'Advanced'].includes(node.level)) {
+      return node.level as Level;
+    }
+
+    const haystack = `${node.description ?? ''} ${node.label ?? ''}`.toLowerCase();
+
+    const beginnerKeywords = [
+      'introduction',
+      'intro',
+      'basics',
+      'beginner',
+      'getting started',
+      'overview',
+      'foundation',
+    ];
+    const advancedKeywords = [
+      'advanced',
+      'expert',
+      'deep dive',
+      'specialized',
+      'cutting-edge',
+      'complex',
+    ];
+
+    if (beginnerKeywords.some((kw) => haystack.includes(kw))) {
+      return 'Beginner';
+    }
+    if (advancedKeywords.some((kw) => haystack.includes(kw))) {
+      return 'Advanced';
+    }
+    return 'Intermediate';
+  }, []);
+
   useEffect(() => {
-    setFlowNodes((prev) =>
-      prev.map((node) => ({
-        ...node,
-        data: {
-          ...node.data,
-          onViewDetails: handleViewDetails,
-          onExpand: handleExpand,
-          isExpanding: expandingNodes.has(node.id),
-          isExpanded: expandedNodes.has(node.id),
-          justExpanded: recentlyExpanded.has(node.id),
-          tooltipCount: tooltip && tooltip.nodeId === node.id ? tooltip.count : undefined,
-        },
-      })),
-    );
-  }, [handleViewDetails, handleExpand, expandingNodes, expandedNodes, recentlyExpanded, tooltip]);
+    setFiltering(true);
+    const timer = setTimeout(() => setFiltering(false), 180);
+    return () => clearTimeout(timer);
+  }, [levelFilter]);
+
+  const filteredNodes = useMemo(() => {
+    if (levelFilter === 'All') {
+      return enrichedNodes;
+    }
+    return enrichedNodes.filter((node) => getLevel(node.data) === levelFilter);
+  }, [enrichedNodes, getLevel, levelFilter]);
+
+  const filteredNodeIds = useMemo(
+    () => new Set(filteredNodes.map((node) => node.id)),
+    [filteredNodes],
+  );
+
+  const filteredEdges = useMemo(
+    () =>
+      levelFilter === 'All'
+        ? flowEdges
+        : flowEdges.filter(
+            (edge) =>
+              filteredNodeIds.has(edge.source) && filteredNodeIds.has(edge.target),
+          ),
+    [flowEdges, filteredNodeIds, levelFilter],
+  );
+
+  const canvasOpacityClass = filtering ? 'opacity-0' : 'opacity-100';
 
   return (
     <div className="h-[620px] w-full overflow-hidden rounded-3xl border border-slate-200/70 bg-gradient-to-br from-slate-50 via-white to-slate-100 shadow-xl">
       <ReactFlow
-        nodes={flowNodes}
-        edges={flowEdges}
+        nodes={filteredNodes}
+        edges={filteredEdges}
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.25 }}
         attributionPosition="bottom-left"
         minZoom={0.4}
         maxZoom={1.6}
+        className={`transition-opacity duration-200 ease-out ${canvasOpacityClass}`}
       >
         <Background
           variant={BackgroundVariant.Dots}
@@ -666,3 +1036,4 @@ export default function LearningMap(props: LearningMapProps) {
     </ReactFlowProvider>
   );
 }
+

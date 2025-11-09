@@ -14,6 +14,7 @@ npm install
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-1.5-flash
 GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+VALIDATE_URLS=false
 PORT=3001
 ```
 
@@ -50,10 +51,33 @@ Generates a learning map for a given topic.
 }
 ```
 
+### POST /api/expand-node
+
+Expands a node into 3–5 additional child topics.
+
+**Request Body:**
+```json
+{
+  "nodeTitle": "Caching Strategies"
+}
+```
+
+### POST /api/related-topics
+
+Returns 4–6 topics closely related to the requested subject.
+
+**Request Body:**
+```json
+{
+  "topic": "System Design"
+}
+```
+
 ## Environment Variables
 
 - `GEMINI_API_KEY`: Your Gemini API key (required)
 - `GEMINI_MODEL`: Model to use (default: `gemini-1.5-flash`)
 - `GEMINI_API_BASE_URL`: Gemini API base URL (default: `https://generativelanguage.googleapis.com/v1beta`)
+- `VALIDATE_URLS`: Set to `true` to run HEAD checks against returned resource links (default: `false`)
 - `PORT`: Server port (default: `3001`)
 

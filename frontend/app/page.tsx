@@ -1,10 +1,27 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+} from 'react';
+import LearningLevelFilter from '@/components/LearningLevelFilter';
 import TopicInput from '@/components/TopicInput';
 import LearningMap from '@/components/LearningMap';
 import NodeDetails from '@/components/NodeDetails';
 import { LearningMapData, Node } from '@/utils/types';
+import { postJSON } from '@/utils/api';
+
+const AUTO_SAVE_KEY = 'learning-map-generator:last-map';
+
+type LevelFilter = 'All' | 'Beginner' | 'Intermediate' | 'Advanced';
+
+type SavedSnapshot = {
+  map: LearningMapData;
+  topic?: string;
+};
 
 export default function Home() {
   const [learningMap, setLearningMap] = useState<LearningMapData | null>(null);
@@ -13,6 +30,15 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [lastTopic, setLastTopic] = useState<string | null>(null);
+  const [levelFilter, setLevelFilter] = useState<LevelFilter>('All');
+  const [relatedTopics, setRelatedTopics] = useState<string[]>([]);
+  const [pendingTopic, setPendingTopic] = useState<string | null>(null);
+  const relatedTopicsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState<SavedSnapshot | null>(null);
+  const [resumeDismissed, setResumeDismissed] = useState(false);
+  const [showResumeBanner, setShowResumeBanner] = useState(false);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleGenerateMap = async (topic: string) => {
@@ -20,22 +46,12 @@ export default function Home() {
     setError(null);
     setLearningMap(null);
     setSelectedNode(null);
+    setRelatedTopics([]);
+    setResumeDismissed(true);
+    setShowResumeBanner(false);
 
     try {
-      const response = await fetch('http://localhost:3001/api/generate-map', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ topic }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate learning map');
-      }
-
-      const data: LearningMapData = await response.json();
+      const data = await postJSON<LearningMapData>('/api/generate-map', { topic });
       setLastTopic(topic);
       const sanitizedData: LearningMapData = {
         ...data,
@@ -56,6 +72,7 @@ export default function Home() {
       );
     } finally {
       setIsLoading(false);
+      setPendingTopic(null);
     }
   };
 
@@ -140,10 +157,186 @@ export default function Home() {
     }
   };
 
+  const handleRelatedTopic = (topic: string) => {
+    setPendingTopic(topic);
+    handleGenerateMap(topic);
+    showToast(`Generating a map for ${topic}...`);
+  };
+
+  useEffect(() => {
+    if (!lastTopic) {
+      setRelatedTopics([]);
+      return;
+    }
+
+    if (relatedTopicsTimeoutRef.current) {
+      clearTimeout(relatedTopicsTimeoutRef.current);
+    }
+
+    relatedTopicsTimeoutRef.current = setTimeout(async () => {
+      try {
+        const response = await postJSON<{ topics: string[] }>('/api/related-topics', {
+          topic: lastTopic,
+        });
+        setRelatedTopics(Array.isArray(response.topics) ? response.topics : []);
+      } catch (error) {
+        console.error('Failed to load related topics', error);
+      }
+    }, 700);
+
+    return () => {
+      if (relatedTopicsTimeoutRef.current) {
+        clearTimeout(relatedTopicsTimeoutRef.current);
+        relatedTopicsTimeoutRef.current = null;
+      }
+    };
+  }, [lastTopic]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(AUTO_SAVE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as SavedSnapshot;
+        if (parsed && parsed.map && typeof parsed.map === 'object') {
+          setSavedSnapshot(parsed);
+          setResumeDismissed(false);
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to read saved map from storage', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!learningMap) {
+      setShowResumeBanner(!resumeDismissed && Boolean(savedSnapshot));
+      return;
+    }
+    if (resumeDismissed) {
+      setShowResumeBanner(false);
+    }
+  }, [learningMap, resumeDismissed, savedSnapshot]);
+
+  useEffect(() => {
+    if (!learningMap) {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+        autoSaveTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      try {
+        const snapshot: SavedSnapshot = {
+          map: learningMap,
+          topic: lastTopic || learningMap.mainTopic,
+        };
+        localStorage.setItem(AUTO_SAVE_KEY, JSON.stringify(snapshot));
+        setSavedSnapshot(snapshot);
+        setResumeDismissed(false);
+      } catch (error) {
+        console.warn('Failed to auto-save learning map', error);
+      }
+    }, 500);
+
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+        autoSaveTimeoutRef.current = null;
+      }
+    };
+  }, [learningMap, lastTopic]);
+
   const hasLearningMap = Boolean(learningMap);
+
+  function handleImportButtonClick() {
+    fileInputRef.current?.click();
+  }
+
+  const validateImportedMap = (candidate: unknown): candidate is LearningMapData => {
+    if (typeof candidate !== 'object' || candidate === null) {
+      return false;
+    }
+    const map = candidate as LearningMapData;
+    return (
+      typeof map.mainTopic === 'string' &&
+      Array.isArray(map.nodes) &&
+      map.nodes.every((node) => {
+        return (
+          typeof node.id === 'string' &&
+          typeof node.label === 'string' &&
+          Array.isArray(node.resources) &&
+          node.resources.every((resource) => typeof resource === 'string')
+        );
+      })
+    );
+  };
+
+  function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const text = String(reader.result || '');
+        const parsed = JSON.parse(text);
+        if (!validateImportedMap(parsed)) {
+          throw new Error('Invalid learning map JSON');
+        }
+        setLearningMap(parsed);
+        setLastTopic(parsed.mainTopic);
+        setLevelFilter('All');
+        setSelectedNode(null);
+        setRelatedTopics([]);
+        setPendingTopic(null);
+        setResumeDismissed(false);
+        showToast('Imported learning map applied');
+      } catch (error) {
+        console.error('Import failed', error);
+        showToast('Invalid learning map JSON');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  }
+
+  function handleRestoreSnapshot() {
+    if (!savedSnapshot) {
+      return;
+    }
+    setLearningMap(savedSnapshot.map);
+    setLastTopic(savedSnapshot.topic || savedSnapshot.map.mainTopic);
+    setLevelFilter('All');
+    setSelectedNode(null);
+    setRelatedTopics([]);
+    setPendingTopic(null);
+    setResumeDismissed(true);
+    setShowResumeBanner(false);
+    showToast('Restored your previous map');
+  }
+
+  function handleDismissResume() {
+    setResumeDismissed(true);
+    setShowResumeBanner(false);
+  }
 
   return (
     <main className="relative min-h-screen overflow-hidden">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/json"
+        onChange={handleImportFile}
+        className="hidden"
+      />
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 bg-grid opacity-60"
@@ -165,82 +358,93 @@ export default function Home() {
               organising. Explore the connections, review curated links, and
               build a tailored learning journey powered by AI.
             </p>
-            <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-slate-200/70 bg-white/80 p-5 shadow-inner sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-slate-500">
-                Need inspiration? Try{' '}
-                <span className="font-medium text-slate-700">
-                  “Generative AI Ethics”
-                </span>{' '}
-                or{' '}
-                <span className="font-medium text-slate-700">
-                  “Regenerative Agriculture”
-                </span>
-                .
-              </div>
-              <div className="flex justify-center space-x-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <span className="rounded-full bg-slate-100 px-3 py-1">
-                  Curated roadmaps
-                </span>
-                <span className="rounded-full bg-slate-100 px-3 py-1">
-                  Actionable next steps
-                </span>
-              </div>
+            <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-slate-200/70 bg-white/80 p-4 shadow-inner sm:p-5">
+              <LearningLevelFilter selected={levelFilter} onChange={setLevelFilter} />
+              <TopicInput
+                onGenerate={handleGenerateMap}
+                isLoading={isLoading}
+                disabled={isLoading}
+              />
             </div>
-          </div>
-          <div className="relative z-10 mt-6 rounded-2xl border border-slate-200/60 bg-white/80 p-4 shadow-inner sm:p-5">
-            <TopicInput
-              onGenerate={handleGenerateMap}
-              isLoading={isLoading}
-              disabled={isLoading}
-            />
-          </div>
 
-          {error && (
-            <div className="mt-5 flex items-start gap-4 rounded-2xl border border-rose-200 bg-rose-50/80 p-4 text-rose-700 shadow-sm">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-100 text-lg">
-                ⚠️
+            {error && (
+              <div className="mt-5 flex items-start gap-4 rounded-2xl border border-rose-200 bg-rose-50/80 p-4 text-rose-700 shadow-sm">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-rose-100 text-lg">
+                  ⚠️
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold uppercase tracking-wide">
+                    Something went wrong
+                  </p>
+                  <p className="mt-1 text-sm leading-relaxed">{error}</p>
+                </div>
+                <button
+                  onClick={handleDismissError}
+                  className="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700 transition hover:bg-rose-200"
+                >
+                  Dismiss
+                </button>
               </div>
-              <div className="flex-1">
-                <p className="text-sm font-semibold uppercase tracking-wide">
-                  Something went wrong
+            )}
+
+            {!hasLearningMap && !isLoading && !error && (
+              <div className="mt-8 rounded-3xl border border-slate-200/60 bg-white/60 p-6 text-center shadow-inner sm:p-8">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 text-2xl text-blue-600">
+                  ✨
+                </div>
+                <h3 className="mt-4 text-xl font-semibold text-slate-900">
+                  Start with a topic you&apos;re curious about
+                </h3>
+                <p className="mt-2 text-sm text-slate-600 sm:text-base">
+                  We’ll craft a tailored map showing what to learn first, how
+                  concepts connect, and where to find the best resources.
                 </p>
-                <p className="mt-1 text-sm leading-relaxed">{error}</p>
+                <div className="mt-4 flex flex-wrap justify-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
+                  <span className="rounded-full bg-slate-100 px-3 py-1">
+                    Guided learning
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-3 py-1">
+                    Curated resources
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-3 py-1">
+                    Interactive map
+                  </span>
+                </div>
               </div>
-              <button
-                onClick={handleDismissError}
-                className="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700 transition hover:bg-rose-200"
-              >
-                Dismiss
-              </button>
-            </div>
-          )}
-
-          {!hasLearningMap && !isLoading && !error && (
-            <div className="mt-8 rounded-3xl border border-slate-200/60 bg-white/60 p-6 text-center shadow-inner sm:p-8">
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 text-2xl text-blue-600">
-                ✨
-              </div>
-              <h3 className="mt-4 text-xl font-semibold text-slate-900">
-                Start with a topic you&apos;re curious about
-              </h3>
-              <p className="mt-2 text-sm text-slate-600 sm:text-base">
-                We’ll craft a tailored map showing what to learn first, how
-                concepts connect, and where to find the best resources.
-              </p>
-              <div className="mt-4 flex flex-wrap justify-center gap-2 text-xs font-medium uppercase tracking-wide text-slate-500">
-                <span className="rounded-full bg-slate-100 px-3 py-1">
-                  Guided learning
-                </span>
-                <span className="rounded-full bg-slate-100 px-3 py-1">
-                  Curated resources
-                </span>
-                <span className="rounded-full bg-slate-100 px-3 py-1">
-                  Interactive map
-                </span>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
         </section>
+
+        {showResumeBanner && savedSnapshot && (
+          <div className="rounded-3xl border border-blue-200 bg-blue-50/80 p-5 shadow-inner">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-blue-800">
+                  Resume your previous map?
+                </h3>
+                <p className="text-sm text-blue-600">
+                  {savedSnapshot.topic || savedSnapshot.map.mainTopic}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleRestoreSnapshot}
+                  className="rounded-full bg-blue-600 px-4 py-1.5 text-sm font-semibold text-white shadow hover:bg-blue-700"
+                >
+                  Restore
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDismissResume}
+                  className="rounded-full border border-blue-200 px-4 py-1.5 text-sm font-medium text-blue-600 hover:border-blue-300"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {hasLearningMap && learningMap && (
           <section className="relative rounded-3xl border border-slate-200/60 bg-white/80 p-5 shadow-lg sm:p-8">
@@ -273,6 +477,7 @@ export default function Home() {
                 onNodeClick={handleNodeClick}
                 onExpand={handleExpandUpdate}
                 onToast={showToast}
+                levelFilter={levelFilter}
               />
               {isLoading && (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-3xl bg-white/80 backdrop-blur-sm">
@@ -287,15 +492,56 @@ export default function Home() {
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Want to share or revisit later?
               </p>
-              <button
-                onClick={handleExport}
-                className="group inline-flex items-center gap-2 rounded-2xl border border-transparent bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 px-5 py-2.5 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-blue-200"
-              >
-                Download Learning Map (JSON)
-                <span className="text-lg transition-transform group-hover:translate-x-1">
-                  ⬇
-                </span>
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleImportButtonClick}
+                  className="group inline-flex items-center gap-2 rounded-2xl border border-transparent bg-slate-100 px-5 py-2.5 text-sm font-semibold uppercase tracking-wide text-slate-600 shadow-lg transition hover:-translate-y-0.5 hover:bg-slate-200 focus:outline-none focus:ring-4 focus:ring-slate-200"
+                >
+                  Import JSON
+                </button>
+                <button
+                  onClick={handleExport}
+                  className="group inline-flex items-center gap-2 rounded-2xl border border-transparent bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 px-5 py-2.5 text-sm font-semibold uppercase tracking-wide text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-2xl focus:outline-none focus:ring-4 focus:ring-blue-200"
+                >
+                  Download Learning Map (JSON)
+                  <span className="text-lg transition-transform group-hover:translate-x-1">
+                    ⬇
+                  </span>
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {relatedTopics.length > 0 && (
+          <section className="rounded-3xl border border-slate-200/60 bg-white/70 p-5 shadow-inner">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.28em] text-slate-500">
+                Related Topics
+              </h3>
+              <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">
+                Click to explore
+              </span>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {relatedTopics.map((topic) => {
+                const isPending = pendingTopic === topic && isLoading;
+                return (
+                  <button
+                    key={topic}
+                    type="button"
+                    onClick={() => handleRelatedTopic(topic)}
+                    disabled={isPending || isLoading}
+                    className={`rounded-full border px-4 py-1.5 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+                      isPending
+                        ? 'cursor-wait border-blue-200 bg-blue-50 text-blue-500'
+                        : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:text-blue-600'
+                    }`}
+                  >
+                    {isPending ? 'Generating…' : topic}
+                  </button>
+                );
+              })}
             </div>
           </section>
         )}

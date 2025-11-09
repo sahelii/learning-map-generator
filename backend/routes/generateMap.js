@@ -3,6 +3,7 @@ const router = express.Router();
 const {
   generateLearningMap,
   expandLearningNode,
+  getRelatedTopicsController,
 } = require('../controllers/mapController');
 
 /**
@@ -18,6 +19,13 @@ router.post('/generate-map', generateLearningMap);
  * Body: { nodeTitle: string }
  */
 router.post('/expand-node', expandLearningNode);
+
+/**
+ * POST /api/related-topics
+ * Suggest related topics for the current map
+ * Body: { topic: string }
+ */
+router.post('/related-topics', getRelatedTopicsController);
 
 module.exports = router;
 
