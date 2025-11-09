@@ -21,6 +21,11 @@ Perfect for students, educators, and anyone looking to create structured learnin
 - Resource validation with optional link health checks
 - JSON import/export plus auto-save and resume banner for fast iteration
 
+## 🌐 Live Demo
+
+- **Frontend (Vercel)** – [learning-map-generator-tau.vercel.app](https://learning-map-generator-tau.vercel.app/)
+- **Backend API (Render)** – [learning-map-backend.onrender.com](https://learning-map-backend.onrender.com/)
+
 ## 🚀 Tech Stack
 
 ### Frontend
@@ -271,7 +276,7 @@ Returns 4–6 closely related topics for the current map.
 | `GEMINI_API_KEY` | Your Gemini API key | Yes | - |
 | `GEMINI_MODEL` | Model to use (`gemini-1.5-flash`, etc.) | No | `gemini-1.5-flash` |
 | `GEMINI_API_BASE_URL` | Base URL for the Gemini API | No | `https://generativelanguage.googleapis.com/v1beta` |
-| `VALIDATE_URLS` | Enable HEAD checks for resource URLs (`true`/`false`) | No | `false` |
+| `VALIDATE_URLS` | Enable HEAD checks for resource URLs (`true`/`false`) | No | `true` |
 | `PORT` | Server port | No | `3001` |
 
 ### Frontend Configuration

@@ -14,7 +14,7 @@ npm install
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-1.5-flash
 GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta
-VALIDATE_URLS=false
+VALIDATE_URLS=true
 PORT=3001
 ```
 
