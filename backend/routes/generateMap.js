@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const { generateLearningMap } = require('../controllers/mapController');
+const {
+  generateLearningMap,
+  expandLearningNode,
+} = require('../controllers/mapController');
 
 /**
  * POST /api/generate-map
@@ -8,6 +11,13 @@ const { generateLearningMap } = require('../controllers/mapController');
  * Body: { topic: string }
  */
 router.post('/generate-map', generateLearningMap);
+
+/**
+ * POST /api/expand-node
+ * Expands a learning node into subtopics
+ * Body: { nodeTitle: string }
+ */
+router.post('/expand-node', expandLearningNode);
 
 module.exports = router;
 

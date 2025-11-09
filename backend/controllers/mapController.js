@@ -1,4 +1,4 @@
-const { callGemini } = require('../services/llmService');
+const { callGemini, expandNode } = require('../services/llmService');
 
 /**
  * Controller to handle learning map generation requests
@@ -26,7 +26,29 @@ const generateLearningMap = async (req, res) => {
   }
 };
 
+const expandLearningNode = async (req, res) => {
+  try {
+    const { nodeTitle } = req.body;
+
+    if (!nodeTitle || typeof nodeTitle !== 'string' || nodeTitle.trim().length === 0) {
+      return res.status(400).json({
+        error: 'nodeTitle is required and must be a non-empty string',
+      });
+    }
+
+    const expansion = await expandNode(nodeTitle.trim());
+
+    res.json(expansion);
+  } catch (error) {
+    console.error('Error expanding learning node:', error);
+    res.status(500).json({
+      error: error.message || 'Failed to expand learning node',
+    });
+  }
+};
+
 module.exports = {
   generateLearningMap,
+  expandLearningNode,
 };
 

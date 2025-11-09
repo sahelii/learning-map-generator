@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import TopicInput from '@/components/TopicInput';
 import LearningMap from '@/components/LearningMap';
 import NodeDetails from '@/components/NodeDetails';
@@ -13,6 +13,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [lastTopic, setLastTopic] = useState<string | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleGenerateMap = async (topic: string) => {
     setIsLoading(true);
@@ -70,6 +71,45 @@ export default function Home() {
     setError(null);
   };
 
+  const showToast = useCallback((message: string) => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+    setToast(message);
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast(null);
+      toastTimeoutRef.current = null;
+    }, 2500);
+  }, []);
+
+  const handleExpandUpdate = useCallback(
+    (parentId: string, children: Node[]) => {
+      setLearningMap((prev) => {
+        if (!prev) {
+          return prev;
+        }
+
+        const existingIds = new Set(prev.nodes.map((node) => node.id));
+        const newNodes = children.filter((child) => !existingIds.has(child.id));
+        if (!newNodes.length) {
+          return prev;
+        }
+
+        const additionalEdges = newNodes.map((child) => ({
+          source: parentId,
+          target: child.id,
+        }));
+
+        return {
+          ...prev,
+          nodes: [...prev.nodes, ...newNodes],
+          edges: [...prev.edges, ...additionalEdges],
+        };
+      });
+    },
+    []
+  );
+
   const handleExport = () => {
     if (!learningMap) {
       return;
@@ -93,11 +133,9 @@ export default function Home() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
-      setToast('Map exported successfully');
-      setTimeout(() => setToast(null), 2500);
+      showToast('Map exported successfully');
     } catch (exportError) {
-      setToast('Failed to export map');
-      setTimeout(() => setToast(null), 2500);
+      showToast('Failed to export map');
       console.error('Error exporting learning map:', exportError);
     }
   };
@@ -233,6 +271,8 @@ export default function Home() {
                 nodes={learningMap.nodes}
                 edges={learningMap.edges}
                 onNodeClick={handleNodeClick}
+                onExpand={handleExpandUpdate}
+                onToast={showToast}
               />
               {isLoading && (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-3xl bg-white/80 backdrop-blur-sm">
