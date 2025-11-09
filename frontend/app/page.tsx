@@ -154,10 +154,10 @@ export default function Home() {
           <div className="absolute -right-24 top-1/2 h-72 w-72 -translate-y-1/2 rounded-full bg-indigo-200/30 blur-3xl" />
           <div className="relative z-10">
             <span className="inline-flex items-center rounded-full bg-blue-100/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-700">
-              Generate Interactive Learning Maps in Seconds
+            Build Your Personalized Learning Map in Seconds
             </span>
             <h1 className="mt-4 text-3xl font-bold leading-tight text-slate-900 sm:text-4xl">
-            Generate Interactive Learning Maps in Seconds 
+            Generate Interactive Learning Maps 
             </h1>
             <p className="mt-3 max-w-3xl text-base leading-relaxed text-slate-600 sm:text-lg">
               We’ll pull together the core subtopics, essential concepts, and

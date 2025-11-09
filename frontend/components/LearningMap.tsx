@@ -13,10 +13,11 @@ import ReactFlow, {
   Controls,
   Edge as ReactFlowEdge,
   Handle,
-  MiniMap,
   Node as ReactFlowNode,
   NodeTypes,
   Position,
+  ReactFlowProvider,
+  useReactFlow,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Node } from '@/utils/types';
@@ -35,6 +36,8 @@ type CustomNodeData = Node & {
   isExpanded?: boolean;
   justExpanded?: boolean;
   isNew?: boolean;
+  appearDelay?: number;
+  tooltipCount?: number;
   onViewDetails?: (node: Node) => void;
   onExpand?: (node: Node) => void;
 };
@@ -81,18 +84,36 @@ const CustomNode = ({ data }: { data: CustomNodeData }) => {
     }
   };
 
+  const transitionBase = 'opacity 350ms ease-out, transform 350ms ease-out';
+  const styleWhenNew = data.isNew
+    ? {
+        opacity: 0,
+        transform: 'translateY(-20px) scale(0.9)',
+        transition: transitionBase,
+        transitionDelay: `${data.appearDelay ?? 0}ms`,
+      }
+    : {
+        opacity: 1,
+        transform: 'translateY(0) scale(1)',
+        transition: transitionBase,
+      };
+
+  const expandingClasses = isExpanding
+    ? 'opacity-70 scale-[0.98] ring-2 ring-green-400/50 animate-pulse'
+    : '';
+  const expandedClasses = isJustExpanded ? 'node-bounce node-flash' : '';
+
   return (
     <div
       onClick={handleCardClick}
       className={`group relative w-[320px] cursor-pointer overflow-hidden rounded-2xl border px-5 py-4 shadow-md transition-all duration-200 ease-out hover:-translate-y-1 hover:shadow-2xl focus-within:-translate-y-1 focus-within:shadow-2xl ${
         isExpanded ? 'ring-2 ring-offset-2 ring-blue-200/60' : ''
-      } ${isJustExpanded ? 'ring-2 ring-green-400/40 shadow-green-200/50' : ''} ${
-        data.isNew ? 'node-pop' : ''
-      } ${isExpanding ? 'opacity-90' : ''}`}
+      } ${expandingClasses} ${expandedClasses}`}
       style={{
         borderColor: `${accentColor}33`,
         background: isExpanded ? '#f8fbff' : 'rgba(255,255,255,0.95)',
         boxShadow: `0 12px 36px -16px ${accentColor}55`,
+        ...styleWhenNew,
       }}
     >
       <div
@@ -182,6 +203,11 @@ const CustomNode = ({ data }: { data: CustomNodeData }) => {
             )}
           </button>
         </div>
+        {typeof data.tooltipCount === 'number' && data.tooltipCount > 0 && (
+          <div className="pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700 shadow transition-opacity duration-300">
+            🌱 Added {data.tooltipCount} concept{data.tooltipCount > 1 ? 's' : ''}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -303,13 +329,14 @@ const buildInitialLayout = (
   return { rfNodes, rfEdges };
 };
 
-export default function LearningMap({
+function InnerLearningMap({
   nodes,
   edges,
   onNodeClick,
   onExpand,
   onToast,
 }: LearningMapProps) {
+  const reactFlow = useReactFlow<CustomNodeData>();
   const [flowNodes, setFlowNodes] = useState<ReactFlowNode<CustomNodeData>[]>(
     [],
   );
@@ -318,9 +345,11 @@ export default function LearningMap({
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [expandingNodes, setExpandingNodes] = useState<Set<string>>(new Set());
   const [recentlyExpanded, setRecentlyExpanded] = useState<Set<string>>(new Set());
+  const [tooltip, setTooltip] = useState<{ nodeId: string; count: number } | null>(null);
 
   const newNodeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recentExpandTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const tooltipTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const paletteMap = new Map<string, string>();
@@ -340,6 +369,7 @@ export default function LearningMap({
     setExpandedNodes(new Set());
     setExpandingNodes(new Set());
     setRecentlyExpanded(new Set());
+    setTooltip(null);
 
     return () => {
       if (newNodeTimeout.current) {
@@ -347,6 +377,10 @@ export default function LearningMap({
       }
       Object.values(recentExpandTimeouts.current).forEach(clearTimeout);
       recentExpandTimeouts.current = {};
+      if (tooltipTimeout.current) {
+        clearTimeout(tooltipTimeout.current);
+        tooltipTimeout.current = null;
+      }
     };
   }, [nodes, edges]);
 
@@ -464,6 +498,7 @@ export default function LearningMap({
                 ...child,
                 color,
                 isNew: true,
+                appearDelay: index * 50,
                 onViewDetails: handleViewDetails,
                 onExpand: handleExpand,
               },
@@ -488,7 +523,7 @@ export default function LearningMap({
                 return node;
               }),
             );
-          }, 300);
+          }, 350);
 
           setFlowEdges((prevEdges) => [
             ...prevEdges,
@@ -513,6 +548,7 @@ export default function LearningMap({
                 data: {
                   ...node.data,
                   isExpanded: true,
+                  justExpanded: true,
                 },
               };
             }
@@ -546,11 +582,24 @@ export default function LearningMap({
             delete recentExpandTimeouts.current[nodeData.id];
           }, 1000);
 
+          setTooltip({ nodeId: nodeData.id, count: addedChildCount });
+          if (tooltipTimeout.current) {
+            clearTimeout(tooltipTimeout.current);
+          }
+          tooltipTimeout.current = setTimeout(() => {
+            setTooltip(null);
+            tooltipTimeout.current = null;
+          }, 1600);
+
           showToast(
             `🌱 Added ${addedChildCount} new concept${
               addedChildCount > 1 ? 's' : ''
             } under ${nodeData.label}.`,
           );
+
+          setTimeout(() => {
+            reactFlow.fitView({ padding: 0.2, duration: 800 });
+          }, 80);
         }
       } catch (error) {
         console.error(error);
@@ -563,7 +612,7 @@ export default function LearningMap({
         });
       }
     },
-    [assignColor, expandedNodes, expandingNodes, handleViewDetails, onExpand, showToast],
+    [assignColor, expandedNodes, expandingNodes, handleViewDetails, onExpand, reactFlow, showToast],
   );
 
   useEffect(() => {
@@ -577,10 +626,11 @@ export default function LearningMap({
           isExpanding: expandingNodes.has(node.id),
           isExpanded: expandedNodes.has(node.id),
           justExpanded: recentlyExpanded.has(node.id),
+          tooltipCount: tooltip && tooltip.nodeId === node.id ? tooltip.count : undefined,
         },
       })),
     );
-  }, [handleViewDetails, handleExpand, expandingNodes, expandedNodes, recentlyExpanded]);
+  }, [handleViewDetails, handleExpand, expandingNodes, expandedNodes, recentlyExpanded, tooltip]);
 
   return (
     <div className="h-[620px] w-full overflow-hidden rounded-3xl border border-slate-200/70 bg-gradient-to-br from-slate-50 via-white to-slate-100 shadow-xl">
@@ -604,18 +654,15 @@ export default function LearningMap({
           className="rounded-full bg-white/90 shadow-lg"
           position="bottom-right"
         />
-        <MiniMap
-          nodeStrokeColor={(node) =>
-            ((node?.data as CustomNodeData)?.color as string | undefined) ??
-            '#2563eb'
-          }
-          nodeColor={(node) =>
-            ((node?.data as CustomNodeData)?.color as string | undefined) ??
-            '#2563eb'
-          }
-          className="rounded-xl border border-slate-200 bg-white/90 shadow-lg"
-        />
       </ReactFlow>
     </div>
+  );
+}
+
+export default function LearningMap(props: LearningMapProps) {
+  return (
+    <ReactFlowProvider>
+      <InnerLearningMap {...props} />
+    </ReactFlowProvider>
   );
 }
