@@ -2,3 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
+body {
+  min-height: 100vh;
+  background: radial-gradient(circle at top left, #e0f2fe 0%, transparent 45%),
+    radial-gradient(circle at bottom right, #f3e8ff 0%, transparent 50%),
+    linear-gradient(180deg, #f8fafc 0%, #ffffff 40%, #f8fafc 100%);
+  color: #0f172a;
+}
+
+.bg-grid {
+  background-image: linear-gradient(
+      to right,
+      rgba(148, 163, 184, 0.08) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      rgba(148, 163, 184, 0.08) 1px,
+      transparent 1px
+    );
+  background-size: 42px 42px;
+}
+
+.glass-panel {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(14px);
+}
+
+.card-shadow {
+  box-shadow: 0 24px 50px -30px rgba(15, 23, 42, 0.4);
+}
