@@ -35,6 +35,30 @@ export default function NodeDetails({ node, onClose }: NodeDetailsProps) {
           </h4>
           <p className="text-gray-600 leading-relaxed">{node.description}</p>
         </div>
+        <div className="mt-8">
+          <h4 className="text-lg font-semibold text-gray-800 mb-3">
+            Resources
+          </h4>
+          {node.resources.length > 0 ? (
+            <div className="space-y-3">
+              {node.resources.map((resource, index) => (
+                <a
+                  key={resource + index}
+                  href={resource}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block rounded-lg border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700 transition-colors hover:text-blue-900 hover:underline"
+                >
+                  {resource}
+                </a>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">
+              No resources available for this node yet.
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

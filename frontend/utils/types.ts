@@ -7,6 +7,7 @@ export interface Node {
   label: string;
   description: string;
   subtopic?: string;
+  resources: string[];
 }
 
 export interface Edge {

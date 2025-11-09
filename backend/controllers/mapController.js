@@ -1,4 +1,4 @@
-const { callOpenAI } = require('../services/llmService');
+const { callGemini } = require('../services/llmService');
 
 /**
  * Controller to handle learning map generation requests
@@ -14,8 +14,8 @@ const generateLearningMap = async (req, res) => {
       });
     }
 
-    // Call OpenAI service to generate learning map
-    const learningMap = await callOpenAI(topic.trim());
+    // Call LLM service to generate learning map
+    const learningMap = await callGemini(topic.trim());
 
     res.json(learningMap);
   } catch (error) {

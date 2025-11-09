@@ -1,6 +1,6 @@
 # Learning Map Generator
 
-An AI-powered web application that generates interactive, visual learning maps for any topic using OpenAI's GPT models. Transform any subject into a structured learning path with connected nodes showing prerequisites and dependencies.
+An AI-powered web application that generates interactive, visual learning maps for any topic using Gemini's models. Transform any subject into a structured learning path with connected nodes showing prerequisites and dependencies.
 
 ## 🎯 What is This Project?
 
@@ -24,7 +24,7 @@ Perfect for students, educators, and anyone looking to create structured learnin
 ### Backend
 - **Node.js** - JavaScript runtime
 - **Express.js** - Web application framework
-- **OpenAI API** - GPT-4/GPT-3.5 for AI-powered content generation
+- **Gemini API** - LLM-powered content generation
 
 ## 📁 Project Structure
 
@@ -37,7 +37,7 @@ learning-map-generator/
 │   ├── controllers/
 │   │   └── mapController.js   # Request handlers
 │   ├── services/
-│   │   └── llmService.js      # OpenAI integration
+│   │   └── llmService.js      # LLM (Gemini) integration
 │   ├── package.json
 │   └── env.example            # Environment variables template
 ├── frontend/
@@ -61,7 +61,7 @@ learning-map-generator/
 
 - **Node.js** 18 or higher
 - **npm** or **yarn** package manager
-- **OpenAI API Key** ([Get one here](https://platform.openai.com/api-keys))
+- **Gemini API Key**
 
 ### Backend Setup
 
@@ -80,10 +80,11 @@ npm install
 cp env.example .env
 ```
 
-4. Edit `.env` and add your OpenAI API key:
+4. Edit `.env` and add your Gemini API credentials:
 ```env
-OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_MODEL=gpt-4
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-1.5-flash
+GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta
 PORT=3001
 ```
 
@@ -125,16 +126,16 @@ npm start
 
 ## 🤖 How AI Map Generation Works
 
-The application uses OpenAI's GPT models to generate structured learning maps through the following process:
+The application uses Gemini's models to generate structured learning maps through the following process:
 
 1. **User Input**: User enters a topic via the frontend
 2. **API Request**: Frontend sends POST request to `/api/generate-map` with the topic
-3. **AI Processing**: Backend sends a structured prompt to OpenAI API requesting:
+3. **AI Processing**: Backend sends a structured prompt to the Gemini API requesting:
    - Main topic identification
    - Subtopics breakdown (3-8 subtopics)
    - Learning nodes (8-15 concepts with descriptions)
    - Edges/connections showing prerequisites and learning dependencies
-4. **JSON Response**: OpenAI returns structured JSON with nodes and edges
+4. **JSON Response**: Gemini returns structured JSON with nodes and edges
 5. **Visualization**: React Flow renders the graph with:
    - Interactive nodes (clickable for details)
    - Animated edges showing connections
@@ -142,7 +143,7 @@ The application uses OpenAI's GPT models to generate structured learning maps th
 
 ### Prompt Engineering
 
-The system prompt instructs GPT to:
+The system prompt instructs the model to:
 - Create learning concepts (not just topics)
 - Establish logical prerequisites between nodes
 - Provide detailed descriptions for each concept
@@ -195,8 +196,9 @@ Health check endpoint to verify the API is running.
 
 | Variable | Description | Required | Default |
 |----------|-------------|----------|---------|
-| `OPENAI_API_KEY` | Your OpenAI API key | Yes | - |
-| `OPENAI_MODEL` | Model to use (`gpt-4` or `gpt-3.5-turbo`) | No | `gpt-4` |
+| `GEMINI_API_KEY` | Your Gemini API key | Yes | - |
+| `GEMINI_MODEL` | Model to use (`gemini-1.5-flash`, etc.) | No | `gemini-1.5-flash` |
+| `GEMINI_API_BASE_URL` | Base URL for the Gemini API | No | `https://generativelanguage.googleapis.com/v1beta` |
 | `PORT` | Server port | No | `3001` |
 
 ### Frontend Configuration
@@ -213,7 +215,7 @@ const response = await fetch('http://localhost:3001/api/generate-map', {
 
 ### Backend Deployment
 
-1. **Environment Variables**: Set `OPENAI_API_KEY` and other vars in your hosting platform
+1. **Environment Variables**: Set `DEEPSEEK_API_KEY` and other vars in your hosting platform
 2. **Popular Options**:
    - **Vercel**: Add `vercel.json` and deploy
    - **Heroku**: Use Heroku config vars
@@ -243,7 +245,7 @@ npm run build
 
 ### Environment Variables in Production
 
-Always store sensitive keys (like `OPENAI_API_KEY`) as environment variables in your hosting platform, never commit them to git.
+Always store sensitive keys (like `DEEPSEEK_API_KEY`) as environment variables in your hosting platform, never commit them to git.
 
 ## 🧪 Development
 
@@ -252,7 +254,7 @@ Always store sensitive keys (like `OPENAI_API_KEY`) as environment variables in 
 - **server.js**: Main Express server with middleware and error handling
 - **routes/**: Defines API endpoints
 - **controllers/**: Handles request validation and business logic
-- **services/**: External API integrations (OpenAI)
+- **services/**: External API integrations (Gemini)
 
 ### Frontend Architecture
 
@@ -280,4 +282,4 @@ For issues or questions, please open an issue on GitHub.
 
 ---
 
-**Built with ❤️ using Next.js, Express, and OpenAI**
+**Built with ❤️ using Next.js, Express, and Gemini**

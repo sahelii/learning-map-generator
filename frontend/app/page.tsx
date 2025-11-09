@@ -33,7 +33,19 @@ export default function Home() {
       }
 
       const data: LearningMapData = await response.json();
-      setLearningMap(data);
+      const sanitizedData: LearningMapData = {
+        ...data,
+        nodes: (data.nodes ?? []).map((node) => ({
+          ...node,
+          resources: Array.isArray(node.resources)
+            ? node.resources.filter(
+                (resource): resource is string =>
+                  typeof resource === 'string' && resource.trim().length > 0
+              )
+            : [],
+        })),
+      };
+      setLearningMap(sanitizedData);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : 'An unexpected error occurred'

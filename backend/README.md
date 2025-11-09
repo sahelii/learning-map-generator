@@ -11,8 +11,9 @@ npm install
 
 2. Create a `.env` file (copy from `env.example`):
 ```
-OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_MODEL=gpt-4
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-1.5-flash
+GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta
 PORT=3001
 ```
 
@@ -51,7 +52,8 @@ Generates a learning map for a given topic.
 
 ## Environment Variables
 
-- `OPENAI_API_KEY`: Your OpenAI API key (required)
-- `OPENAI_MODEL`: Model to use (default: `gpt-4`)
+- `GEMINI_API_KEY`: Your Gemini API key (required)
+- `GEMINI_MODEL`: Model to use (default: `gemini-1.5-flash`)
+- `GEMINI_API_BASE_URL`: Gemini API base URL (default: `https://generativelanguage.googleapis.com/v1beta`)
 - `PORT`: Server port (default: `3001`)
 
