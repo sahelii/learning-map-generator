@@ -75,73 +75,46 @@ export default function Home() {
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 bg-grid opacity-60"
       />
-      <div className="relative z-10 mx-auto flex max-w-6xl flex-col gap-10 px-4 py-12 md:py-16 lg:px-6">
-        <header className="card-shadow relative overflow-hidden rounded-3xl bg-white/70 px-6 py-10 text-center sm:px-10 md:text-left">
-          <div className="absolute -left-20 -top-32 h-72 w-72 rounded-full bg-blue-200/40 blur-3xl" />
-          <div className="absolute -right-10 bottom-0 h-72 w-72 rounded-full bg-purple-200/40 blur-3xl" />
-          <div className="relative z-10 grid gap-6 md:grid-cols-[minmax(0,1fr),minmax(0,280px)] md:items-center">
-            <div>
-              <p className="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-blue-700 shadow-sm">
-                AI Learning Coach
-              </p>
-              <h1 className="mt-4 text-4xl font-bold leading-tight text-slate-900 sm:text-5xl">
-                Generate Interactive Learning Maps in Seconds
-              </h1>
-              <p className="mt-4 max-w-2xl text-lg text-slate-600 md:pr-6">
-                Visualise the skills, prerequisites, and best resources for any
-                topic. Click through nodes, explore curated links, and build a
-                tailored learning journey powered by AI.
-              </p>
-            </div>
-            <div className="glass-panel card-shadow rounded-3xl p-5 text-left">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Quick Tips
-              </h2>
-              <ul className="mt-4 space-y-3 text-sm text-slate-600">
-                <li className="flex items-start gap-3">
-                  <span className="mt-1 inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-blue-500" />
-                  Ask for any subject&mdash;from “Web Development” to “Soil
-                  Biology”.
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="mt-1 inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-purple-500" />
-                  Click a node to see descriptions and curated resources.
-                </li>
-                <li className="flex items-start gap-3">
-                  <span className="mt-1 inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" />
-                  Use the map to prioritise what to learn next.
-                </li>
-              </ul>
-            </div>
-          </div>
-        </header>
-
-        <section className="glass-panel card-shadow rounded-3xl p-6 sm:p-8">
-          <div className="flex flex-col gap-8 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-slate-900 sm:text-2xl">
-                Choose your next topic
-              </h2>
-              <p className="mt-2 max-w-2xl text-sm text-slate-600 sm:text-base">
-                We’ll pull together the core subtopics, essential concepts, and
-                high-quality resources so you can focus on learning instead of
-                organising.
-              </p>
-            </div>
-            <div className="shrink-0 text-sm text-slate-500">
-              Need inspiration? Try{' '}
-              <span className="font-medium text-slate-700">
-                “Generative AI Ethics”
-              </span>{' '}
-              or{' '}
-              <span className="font-medium text-slate-700">
-                “Regenerative Agriculture”
-              </span>
-              .
+      <div className="relative z-10 mx-auto flex max-w-5xl flex-col gap-10 px-4 py-12 md:py-16 lg:px-6">
+        <section className="card-shadow relative overflow-hidden rounded-3xl bg-white/80 px-6 py-10 sm:px-10">
+          <div className="absolute -left-36 -top-24 h-72 w-72 rounded-full bg-blue-200/35 blur-3xl" />
+          <div className="absolute -right-24 top-1/2 h-72 w-72 -translate-y-1/2 rounded-full bg-indigo-200/30 blur-3xl" />
+          <div className="relative z-10">
+            <span className="inline-flex items-center rounded-full bg-blue-100/90 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+              Generate Interactive Learning Maps in Seconds
+            </span>
+            <h1 className="mt-4 text-3xl font-bold leading-tight text-slate-900 sm:text-4xl">
+            Generate Interactive Learning Maps in Seconds 
+            </h1>
+            <p className="mt-3 max-w-3xl text-base leading-relaxed text-slate-600 sm:text-lg">
+              We’ll pull together the core subtopics, essential concepts, and
+              high-quality resources so you can focus on learning instead of
+              organising. Explore the connections, review curated links, and
+              build a tailored learning journey powered by AI.
+            </p>
+            <div className="mt-6 flex flex-col gap-4 rounded-2xl border border-slate-200/70 bg-white/80 p-5 shadow-inner sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-slate-500">
+                Need inspiration? Try{' '}
+                <span className="font-medium text-slate-700">
+                  “Generative AI Ethics”
+                </span>{' '}
+                or{' '}
+                <span className="font-medium text-slate-700">
+                  “Regenerative Agriculture”
+                </span>
+                .
+              </div>
+              <div className="flex justify-center space-x-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <span className="rounded-full bg-slate-100 px-3 py-1">
+                  Curated roadmaps
+                </span>
+                <span className="rounded-full bg-slate-100 px-3 py-1">
+                  Actionable next steps
+                </span>
+              </div>
             </div>
           </div>
-
-          <div className="mt-6 rounded-2xl border border-slate-200/60 bg-white/70 p-4 shadow-inner sm:p-5">
+          <div className="relative z-10 mt-6 rounded-2xl border border-slate-200/60 bg-white/80 p-4 shadow-inner sm:p-5">
             <TopicInput
               onGenerate={handleGenerateMap}
               isLoading={isLoading}
