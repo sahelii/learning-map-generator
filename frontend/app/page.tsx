@@ -23,10 +23,14 @@ type SavedSnapshot = {
   topic?: string;
 };
 
+type GenerationPhase = 'idle' | 'requesting' | 'parsing' | 'rendering';
+
 export default function Home() {
   const [learningMap, setLearningMap] = useState<LearningMapData | null>(null);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [generationPhase, setGenerationPhase] =
+    useState<GenerationPhase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [lastTopic, setLastTopic] = useState<string | null>(null);
@@ -40,18 +44,36 @@ export default function Home() {
   const [resumeDismissed, setResumeDismissed] = useState(false);
   const [showResumeBanner, setShowResumeBanner] = useState(false);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentRequestRef = useRef<AbortController | null>(null);
 
   const handleGenerateMap = async (topic: string) => {
+    if (currentRequestRef.current) {
+      currentRequestRef.current.abort();
+    }
+
+    const controller = new AbortController();
+    currentRequestRef.current = controller;
+
     setIsLoading(true);
+    setGenerationPhase('requesting');
     setError(null);
-    setLearningMap(null);
     setSelectedNode(null);
     setRelatedTopics([]);
     setResumeDismissed(true);
     setShowResumeBanner(false);
 
     try {
-      const data = await postJSON<LearningMapData>('/api/generate-map', { topic });
+      const data = await postJSON<LearningMapData>(
+        '/api/generate-map',
+        { topic },
+        {
+          signal: controller.signal,
+          onBeforeParse: () => {
+            setGenerationPhase('parsing');
+          },
+        }
+      );
+      setGenerationPhase('rendering');
       setLastTopic(topic);
       const sanitizedData: LearningMapData = {
         ...data,
@@ -67,12 +89,50 @@ export default function Home() {
       };
       setLearningMap(sanitizedData);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'An unexpected error occurred'
-      );
+      const message =
+        err instanceof Error ? err.message : 'An unexpected error occurred';
+      const isAbortError =
+        err instanceof DOMException
+          ? err.name === 'AbortError'
+          : typeof message === 'string' &&
+            (message.includes('The user aborted') ||
+              message.includes('aborted'));
+      const isLatestRequest = currentRequestRef.current === controller;
+      const noActiveRequest = currentRequestRef.current === null;
+
+      if (isAbortError) {
+        if (isLatestRequest || noActiveRequest) {
+          showToast('Generation cancelled');
+        }
+      } else if (isLatestRequest || noActiveRequest) {
+        if (
+          typeof message === 'string' &&
+          (message.toLowerCase().includes('timeout') ||
+            message.toLowerCase().includes('timed out'))
+        ) {
+          setError('The request took too long. Please try again in a moment.');
+        } else {
+          setError(message);
+        }
+      }
     } finally {
-      setIsLoading(false);
-      setPendingTopic(null);
+      if (currentRequestRef.current === controller) {
+        currentRequestRef.current = null;
+        setIsLoading(false);
+        setPendingTopic(null);
+        setGenerationPhase('idle');
+      } else if (!currentRequestRef.current) {
+        setIsLoading(false);
+        setPendingTopic(null);
+        setGenerationPhase('idle');
+      }
+    }
+  };
+
+  const handleCancelGeneration = () => {
+    if (currentRequestRef.current) {
+      currentRequestRef.current.abort();
+      currentRequestRef.current = null;
     }
   };
 
@@ -252,7 +312,42 @@ export default function Home() {
     };
   }, [learningMap, lastTopic]);
 
+  useEffect(() => {
+    return () => {
+      if (currentRequestRef.current) {
+        currentRequestRef.current.abort();
+      }
+    };
+  }, []);
+
   const hasLearningMap = Boolean(learningMap);
+  const activePhase: GenerationPhase =
+    generationPhase === 'idle' && isLoading ? 'requesting' : generationPhase;
+
+  const phaseCopy: Record<
+    GenerationPhase,
+    { headline: string; description: string }
+  > = {
+    idle: {
+      headline: 'Preparing your learning map…',
+      description: 'Hang tight while we get everything ready.',
+    },
+    requesting: {
+      headline: 'Contacting Gemini…',
+      description: 'We’re talking to the model to craft your learning journey.',
+    },
+    parsing: {
+      headline: 'Shaping the results…',
+      description: 'We’re structuring the response into a polished map.',
+    },
+    rendering: {
+      headline: 'Drawing your map…',
+      description: 'Plotting nodes, resources, and connections on the canvas.',
+    },
+  };
+
+  const loadingHeadline = phaseCopy[activePhase].headline;
+  const loadingDescription = phaseCopy[activePhase].description;
 
   function handleImportButtonClick() {
     fileInputRef.current?.click();
@@ -415,6 +510,33 @@ export default function Home() {
           </div>
         </section>
 
+        {isLoading && !learningMap && (
+          <section className="card-shadow relative overflow-hidden rounded-3xl border border-slate-200/60 bg-white/85 p-6 text-center shadow-lg">
+            <div className="absolute -top-12 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full bg-blue-200/40 blur-3xl" />
+            <div className="relative z-10 flex flex-col items-center gap-4">
+              <div className="relative flex h-14 w-14 items-center justify-center">
+                <div className="absolute inset-0 animate-spin rounded-full border-4 border-blue-200 border-t-blue-500" />
+                <span className="sr-only">Loading</span>
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-slate-900 sm:text-lg">
+                  {loadingHeadline}
+                </h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  {loadingDescription}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCancelGeneration}
+                className="inline-flex items-center rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-slate-900/40"
+              >
+                Cancel
+              </button>
+            </div>
+          </section>
+        )}
+
         {showResumeBanner && savedSnapshot && (
           <div className="rounded-3xl border border-blue-200 bg-blue-50/80 p-5 shadow-inner">
             <div className="flex flex-wrap items-center justify-between gap-3">
@@ -480,11 +602,23 @@ export default function Home() {
                 levelFilter={levelFilter}
               />
               {isLoading && (
-                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 rounded-3xl bg-white/80 backdrop-blur-sm">
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 rounded-3xl bg-white/80 backdrop-blur-sm">
                   <div className="h-12 w-12 animate-spin rounded-full border-4 border-blue-400 border-t-transparent" />
-                  <p className="text-sm font-medium text-slate-600">
-                    Crafting your learning map...
-                  </p>
+                  <div className="text-center">
+                    <p className="text-sm font-semibold text-slate-700">
+                      {loadingHeadline}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {loadingDescription}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCancelGeneration}
+                    className="rounded-full border border-slate-300 bg-white/90 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 shadow-sm transition hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+                  >
+                    Cancel
+                  </button>
                 </div>
               )}
             </div>
